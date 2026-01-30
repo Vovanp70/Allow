@@ -1,0 +1,24 @@
+# Файл hosts для исключения из всех списков
+# Формат: IP domain или просто domain
+#
+# Блоки маршрутизации:
+# @BLOCK_START:Название:TYPE
+# где TYPE = HOSTS или IPS
+
+# @BLOCK_START:Российские сервисы:HOSTS
+mail.ru
+citilink.ru
+yandex.com
+yandex.kz
+yandex.ru
+ya.ru
+mts.ru
+vk.com
+dns-shop.ru
+habr.com
+3dnews.ru
+sberbank.ru
+ozon.ru
+wildberries.ru
+donationalerts.com
+# @BLOCK_END

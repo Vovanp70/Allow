@@ -1,0 +1,46 @@
+resolution_type: GETDNS_RESOLUTION_STUB
+dns_transport_list:
+  - GETDNS_TRANSPORT_TLS
+tls_authentication: GETDNS_AUTHENTICATION_REQUIRED
+tls_query_padding_blocksize: 128
+edns_client_subnet_private: 1
+idle_timeout: 30000
+tls_connection_retries: 5
+tls_backoff_time: 180
+timeout: 5000
+tls_cipher_list: "EECDH+AESGCM:EECDH+CHACHA20"
+tls_min_version: GETDNS_TLS1_2
+tls_ca_path: "/etc/ssl/certshashed/"
+
+listen_addresses:
+  - 127.0.0.1@41500
+
+round_robin_upstreams: 1
+
+upstream_recursive_servers:
+  - address_data: 94.140.14.14
+    tls_port: 853
+    tls_auth_name: "dns.adguard-dns.com"
+    tls_ignore_time: 0
+  - address_data: 76.76.2.11
+    tls_port: 853
+    tls_auth_name: "p2.freedns.controld.com"
+    tls_ignore_time: 0
+  # Cloudflare Malware blocking (1.1.1.2, 1.0.0.2)
+  # - address_data: 1.1.1.2
+  #   tls_port: 853
+  #   tls_auth_name: "security.cloudflare-dns.com"
+  #   tls_ignore_time: 0
+  # - address_data: 1.0.0.2
+  #   tls_port: 853
+  #   tls_auth_name: "security.cloudflare-dns.com"
+  #   tls_ignore_time: 0
+  # Yandex Safe (77.88.8.88)
+  # - address_data: 77.88.8.88
+  #   tls_port: 853
+  #   tls_auth_name: "safe.dot.dns.yandex.net"
+  #   tls_ignore_time: 0
+
+
+
+

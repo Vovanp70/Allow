@@ -1,0 +1,443 @@
+#!/bin/sh
+
+# Скрипт автозапуска DNSMASQ Family
+# Каскад: NDM -> dnsmasq-family
+# Использует конфиг: /opt/etc/allow/dnsmasq-full/dnsmasq-family.conf
+
+DNSMASQ_CONF="/opt/etc/allow/dnsmasq-full/dnsmasq-family.conf"
+DNSMASQ_LOG="/opt/var/log/allow/dnsmasq-family.log"
+DNSMASQ_PID="/opt/var/run/dnsmasq-family.pid"
+DEFAULT_PORT="5301"
+
+# Создаем директории для логов и PID файлов
+PATH=/opt/bin:/opt/sbin:/sbin:/bin:/usr/sbin:/usr/bin
+mkdir -p /opt/var/log/allow
+mkdir -p /opt/var/run
+
+is_our_dnsmasq_pid() {
+    pid="$(echo "${1:-}" | tr -cd '0-9')"
+    [ -n "${pid:-}" ] || return 1
+    kill -0 "$pid" 2>/dev/null || return 1
+
+    # Prefer /proc cmdline check (most reliable, prevents PID reuse issues)
+    if [ -r "/proc/$pid/cmdline" ]; then
+        cmd="$(tr '\000' ' ' <"/proc/$pid/cmdline" 2>/dev/null | tr -d '\r\n')"
+        [ -n "${cmd:-}" ] || return 1
+        case "$cmd" in
+            dnsmasq\ *) ;;
+            *) return 1 ;;
+        esac
+
+        conf_ok=0
+        pid_ok=0
+        case "$cmd" in
+            *"--conf-file=$DNSMASQ_CONF"*|*"--conf-file $DNSMASQ_CONF"*) conf_ok=1 ;;
+        esac
+        case "$cmd" in
+            *"--pid-file=$DNSMASQ_PID"*|*"--pid-file $DNSMASQ_PID"*) pid_ok=1 ;;
+        esac
+        [ "$conf_ok" -eq 1 ] && [ "$pid_ok" -eq 1 ] && return 0
+        return 1
+    fi
+
+    # Fallback when /proc is not accessible: rely on strict pgrep patterns.
+    for pat in \
+        "dnsmasq.*--conf-file=$DNSMASQ_CONF.*--pid-file=$DNSMASQ_PID" \
+        "dnsmasq.*--conf-file[[:space:]]*$DNSMASQ_CONF.*--pid-file[[:space:]]*$DNSMASQ_PID" \
+        "dnsmasq.*--pid-file=$DNSMASQ_PID.*--conf-file=$DNSMASQ_CONF" \
+        "dnsmasq.*--pid-file[[:space:]]*$DNSMASQ_PID.*--conf-file[[:space:]]*$DNSMASQ_CONF"
+    do
+        for p in $(pgrep -f "$pat" 2>/dev/null); do
+            p="$(echo "$p" | tr -cd '0-9')"
+            [ -n "${p:-}" ] || continue
+            if [ "$p" = "$pid" ]; then
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
+parse_config_port() {
+    [ -f "$DNSMASQ_CONF" ] || return 1
+    p="$(awk -F= '
+        /^[[:space:]]*#/ {next}
+        /^[[:space:]]*port[[:space:]]*=/ {
+          gsub(/[[:space:]]/,"",$2);
+          print $2; exit
+        }
+    ' "$DNSMASQ_CONF" 2>/dev/null | tr -cd '0-9')"
+    if [ -n "${p:-}" ] && [ "$p" -gt 0 ] 2>/dev/null; then
+        echo "$p"
+        return 0
+    fi
+    return 1
+}
+
+get_running_pids() {
+    # Returns 0/1/many PIDs (one per line) for our dnsmasq-family instance(s).
+
+    # 1) Prefer PID file, but verify it's actually our process.
+    if [ -f "$DNSMASQ_PID" ]; then
+        pid_file="$(cat "$DNSMASQ_PID" 2>/dev/null | tr -cd '0-9')"
+        if [ -n "${pid_file:-}" ] && is_our_dnsmasq_pid "$pid_file" 2>/dev/null; then
+            echo "$pid_file"
+            return 0
+        fi
+    fi
+
+    # 2) Scan processes and verify via /proc cmdline.
+    found=0
+    for p in $(pgrep -x dnsmasq 2>/dev/null); do
+        p="$(echo "$p" | tr -cd '0-9')"
+        [ -n "${p:-}" ] || continue
+        if is_our_dnsmasq_pid "$p" 2>/dev/null; then
+            echo "$p"
+            found=1
+        fi
+    done
+    if [ "$found" -eq 1 ]; then
+        return 0
+    fi
+
+    # 3) Fallback if pgrep -x not supported: strict pgrep -f patterns (conf+pidfile).
+    for pat in \
+        "dnsmasq.*--conf-file=$DNSMASQ_CONF.*--pid-file=$DNSMASQ_PID" \
+        "dnsmasq.*--conf-file[[:space:]]*$DNSMASQ_CONF.*--pid-file[[:space:]]*$DNSMASQ_PID" \
+        "dnsmasq.*--pid-file=$DNSMASQ_PID.*--conf-file=$DNSMASQ_CONF" \
+        "dnsmasq.*--pid-file[[:space:]]*$DNSMASQ_PID.*--conf-file[[:space:]]*$DNSMASQ_CONF"
+    do
+        for p in $(pgrep -f "$pat" 2>/dev/null); do
+            p="$(echo "$p" | tr -cd '0-9')"
+            [ -n "${p:-}" ] || continue
+            if kill -0 "$p" 2>/dev/null; then
+                echo "$p"
+                found=1
+            fi
+        done
+    done
+
+    [ "$found" -eq 1 ] && return 0
+    return 1
+}
+
+get_running_pid() {
+    # Backward-compatible: first PID only.
+    pid="$(get_running_pids 2>/dev/null | head -1 | tr -cd '0-9')"
+    if [ -n "${pid:-}" ] && kill -0 "$pid" 2>/dev/null; then
+        echo "$pid"
+        return 0
+    fi
+    return 1
+}
+
+get_active_port() {
+    pid="$1"
+    prefer_port="$(echo "${2:-}" | tr -cd '0-9')"
+    [ -n "${pid:-}" ] || return 1
+
+    if command -v netstat >/dev/null 2>&1; then
+        # Prefer an exact match on the configured/listening port for this PID.
+        if [ -n "${prefer_port:-}" ]; then
+            la="$(netstat -tulnp 2>/dev/null | awk -v pid="$pid" -v p=":${prefer_port}" '$0 ~ pid"/" && $4 ~ p {print $4; exit}')"
+            if [ -n "${la:-}" ]; then
+                p="$(echo "$la" | sed 's/.*:\([0-9][0-9]*\)$/\1/' | tr -cd '0-9')"
+                [ -n "$p" ] && echo "$p" && return 0
+            fi
+        fi
+
+        la="$(netstat -ulnp 2>/dev/null | awk -v pid="$pid" '$0 ~ pid"/" {print $4; exit}')"
+        [ -n "${la:-}" ] || la="$(netstat -tlnp 2>/dev/null | awk -v pid="$pid" '$0 ~ pid"/" {print $4; exit}')"
+        if [ -n "${la:-}" ]; then
+            p="$(echo "$la" | sed 's/.*:\([0-9][0-9]*\)$/\1/' | tr -cd '0-9')"
+            [ -n "$p" ] && echo "$p" && return 0
+        fi
+    fi
+
+    if command -v ss >/dev/null 2>&1; then
+        # Prefer an exact match on the configured/listening port for this PID.
+        if [ -n "${prefer_port:-}" ]; then
+            la="$(ss -tulnp 2>/dev/null | awk -v pid="$pid" -v p=":${prefer_port}" '$0 ~ "pid="pid && $0 ~ p {print $5; exit}')"
+            if [ -n "${la:-}" ]; then
+                p="$(echo "$la" | sed 's/.*:\([0-9][0-9]*\)$/\1/' | tr -cd '0-9')"
+                [ -n "$p" ] && echo "$p" && return 0
+            fi
+        fi
+
+        la="$(ss -ulnp 2>/dev/null | awk -v pid="$pid" '$0 ~ "pid="pid {print $5; exit}')"
+        [ -n "${la:-}" ] || la="$(ss -tlnp 2>/dev/null | awk -v pid="$pid" '$0 ~ "pid="pid {print $4; exit}')"
+        if [ -n "${la:-}" ]; then
+            p="$(echo "$la" | sed 's/.*:\([0-9][0-9]*\)$/\1/' | tr -cd '0-9')"
+            [ -n "$p" ] && echo "$p" && return 0
+        fi
+    fi
+
+    return 1
+}
+
+status_kv() {
+    CONFIG_PORT="$(parse_config_port 2>/dev/null || true)"
+    [ -n "${CONFIG_PORT:-}" ] || CONFIG_PORT="$DEFAULT_PORT"
+
+    PIDS="$(get_running_pids 2>/dev/null || true)"
+    PID_PRIMARY="$(echo "${PIDS:-}" | head -1 | tr -cd '0-9')"
+    ACTIVE_PORT=""
+    STATUS="notrunning"
+
+    if [ -n "${PID_PRIMARY:-}" ] && kill -0 "$PID_PRIMARY" 2>/dev/null; then
+        STATUS="running"
+        ACTIVE_PORT="$(get_active_port "$PID_PRIMARY" "$CONFIG_PORT" 2>/dev/null || true)"
+        echo "$PID_PRIMARY" >"$DNSMASQ_PID" 2>/dev/null || true
+    fi
+
+    pids_count="$(echo "${PIDS:-}" | awk 'NF{c++} END{print c+0}' 2>/dev/null)"
+    if [ "${pids_count:-0}" -gt 1 ] 2>/dev/null; then
+        MULTI="yes"
+    else
+        MULTI="no"
+    fi
+    PIDS_CSV="$(echo "${PIDS:-}" | tr '\n' ',' | sed 's/,$//' 2>/dev/null)"
+
+    if [ "$STATUS" = "running" ] && [ -n "${ACTIVE_PORT:-}" ] && [ "$ACTIVE_PORT" != "$CONFIG_PORT" ]; then
+        MISMATCH="yes"
+    else
+        MISMATCH="no"
+    fi
+
+    if [ "$STATUS" = "running" ] && [ -n "${ACTIVE_PORT:-}" ]; then
+        EFFECTIVE_PORT="$ACTIVE_PORT"
+    else
+        EFFECTIVE_PORT="$CONFIG_PORT"
+    fi
+
+    echo "STATUS=$STATUS"
+    echo "CONFIG_PORT=$CONFIG_PORT"
+    echo "ACTIVE_PORT=$ACTIVE_PORT"
+    echo "EFFECTIVE_PORT=$EFFECTIVE_PORT"
+    echo "MISMATCH=$MISMATCH"
+    echo "MULTI=$MULTI"
+    echo "PIDS=$PIDS_CSV"
+    echo "CONF_FILE=$DNSMASQ_CONF"
+    echo "LOG_FILE=$DNSMASQ_LOG"
+    echo "PID_FILE=$DNSMASQ_PID"
+    echo "PID=$PID_PRIMARY"
+}
+
+start() {
+    echo "Запуск DNSMASQ Family..."
+
+    ############################
+    ## IPSET (опционально)
+    ############################
+    ## BEGIN_IPSET
+    # Обработка hosts-файлов перед запуском dnsmasq (если используется ipset).
+    # Скрипт создает ipset'ы и генерирует конфигурацию dnsmasq.
+    if [ -f "/opt/etc/allow/dnsmasq-full/process-hosts.sh" ]; then
+        echo "Обработка hosts файлов для ipset..."
+        sh /opt/etc/allow/dnsmasq-full/process-hosts.sh
+    fi
+    ## END_IPSET
+    
+    # Проверяем, не запущен ли уже DNSMASQ Family (идеально: verify via /proc cmdline)
+    PIDS_RUNNING="$(get_running_pids 2>/dev/null || true)"
+    PID_PRIMARY="$(echo "${PIDS_RUNNING:-}" | head -1 | tr -cd '0-9')"
+    if [ -n "${PID_PRIMARY:-}" ] && kill -0 "$PID_PRIMARY" 2>/dev/null; then
+        echo "DNSMASQ Family уже запущен (PID: $PID_PRIMARY)"
+        echo "$PID_PRIMARY" >"$DNSMASQ_PID" 2>/dev/null || true
+        return 0
+    fi
+    
+    # Проверяем наличие конфигурационного файла
+    if [ ! -f "$DNSMASQ_CONF" ]; then
+        echo "Ошибка: конфигурационный файл $DNSMASQ_CONF не найден"
+        return 1
+    fi
+    
+    # Проверяем, включено ли логирование в конфиге
+    LOGGING_ENABLED=0
+    if [ -f "$DNSMASQ_CONF" ]; then
+        # Проверяем наличие log-queries или log-facility в конфиге
+        if grep -E "^log-queries|^log-facility" "$DNSMASQ_CONF" 2>/dev/null | grep -v "^#" | grep -qE "log-queries|log-facility"; then
+            LOGGING_ENABLED=1
+        fi
+    fi
+    
+    # Создаем и очищаем файл лога перед запуском (если логирование включено)
+    if [ $LOGGING_ENABLED -eq 1 ]; then
+        mkdir -p /opt/var/log
+        : > "$DNSMASQ_LOG"
+        chmod 644 "$DNSMASQ_LOG"
+    fi
+    
+    # Запускаем DNSMASQ Family
+    if [ $LOGGING_ENABLED -eq 1 ]; then
+        # С логированием - перенаправляем вывод в файл
+        dnsmasq \
+            --conf-file="$DNSMASQ_CONF" \
+            --pid-file="$DNSMASQ_PID" \
+            --no-daemon \
+            >> "$DNSMASQ_LOG" 2>&1 &
+        DNSMASQ_PID_START=$!
+    else
+        # Без логирования - запускаем без перенаправления
+        dnsmasq \
+            --conf-file="$DNSMASQ_CONF" \
+            --pid-file="$DNSMASQ_PID" \
+            --no-daemon &
+        DNSMASQ_PID_START=$!
+    fi
+    
+    # Ждем, чтобы процесс запустился и создал PID файл
+    sleep 2
+    
+    # Если PID файл еще не создан, создаем его вручную
+    if [ ! -f "$DNSMASQ_PID" ] && [ -n "$DNSMASQ_PID_START" ]; then
+        echo "$DNSMASQ_PID_START" > "$DNSMASQ_PID"
+    fi
+    
+    # Проверяем, что процесс запустился (сначала по PID файлу, потом по процессу)
+    PIDS_RUNNING="$(get_running_pids 2>/dev/null || true)"
+    PID_PRIMARY="$(echo "${PIDS_RUNNING:-}" | head -1 | tr -cd '0-9')"
+    if [ -n "${PID_PRIMARY:-}" ] && kill -0 "$PID_PRIMARY" 2>/dev/null; then
+        echo "DNSMASQ Family запущен (PID: $PID_PRIMARY)"
+        echo "Логи: $DNSMASQ_LOG"
+        echo "$PID_PRIMARY" > "$DNSMASQ_PID" 2>/dev/null || true
+        return 0
+    fi
+    
+    echo "Ошибка: не удалось запустить DNSMASQ Family"
+    return 1
+}
+
+stop() {
+    echo "Остановка DNSMASQ Family..."
+    
+    if [ -f "$DNSMASQ_PID" ]; then
+        PID=$(cat "$DNSMASQ_PID" 2>/dev/null)
+        if [ -n "$PID" ] && is_our_dnsmasq_pid "$PID" 2>/dev/null; then
+            kill "$PID" 2>/dev/null
+            sleep 1
+            # Проверяем, что процесс остановлен
+            if kill -0 "$PID" 2>/dev/null; then
+                kill -9 "$PID" 2>/dev/null
+            fi
+            echo "DNSMASQ Family остановлен"
+        else
+            echo "DNSMASQ Family не запущен (PID-файл устарел или указывает не на процесс Allow)"
+        fi
+        rm -f "$DNSMASQ_PID"
+    else
+        PIDS="$(get_running_pids 2>/dev/null || true)"
+        if [ -n "${PIDS:-}" ]; then
+            echo "$PIDS" | while read -r PID; do
+                PID="$(echo "${PID:-}" | tr -cd '0-9')"
+                [ -n "${PID:-}" ] || continue
+                if kill -0 "$PID" 2>/dev/null; then
+                    kill "$PID" 2>/dev/null
+                    sleep 1
+                    if kill -0 "$PID" 2>/dev/null; then
+                        kill -9 "$PID" 2>/dev/null
+                    fi
+                    echo "DNSMASQ Family остановлен (PID: $PID)"
+                fi
+            done
+            rm -f "$DNSMASQ_PID" 2>/dev/null || true
+        else
+            echo "DNSMASQ Family не запущен"
+        fi
+    fi
+}
+
+restart() {
+    stop
+    sleep 1
+    start
+}
+
+reload() {
+    echo "Перезагрузка конфигурации DNSMASQ Family..."
+    
+    # Обрабатываем hosts файлы
+    if [ -f "/opt/etc/allow/dnsmasq-full/process-hosts.sh" ]; then
+        echo "Обновление конфигурации ipset из hosts файлов..."
+        sh /opt/etc/allow/dnsmasq-full/process-hosts.sh
+    fi
+    
+    PIDS="$(get_running_pids 2>/dev/null || true)"
+    if [ -n "${PIDS:-}" ]; then
+        echo "$PIDS" | while read -r PID; do
+            PID="$(echo "${PID:-}" | tr -cd '0-9')"
+            [ -n "${PID:-}" ] || continue
+            if kill -0 "$PID" 2>/dev/null; then
+                kill -HUP "$PID" 2>/dev/null
+                echo "Конфигурация DNSMASQ Family перезагружена (PID: $PID)"
+            fi
+        done
+        return 0
+    fi
+    
+    echo "DNSMASQ Family не запущен, невозможно перезагрузить конфигурацию"
+    return 1
+}
+
+status() {
+    if [ "${2:-}" = "--kv" ] || [ "${2:-}" = "--machine" ] || [ "${1:-}" = "--kv" ] || [ "${1:-}" = "--machine" ]; then
+        status_kv
+        return 0
+    fi
+
+    CONFIG_PORT="$(parse_config_port 2>/dev/null || true)"
+    [ -n "${CONFIG_PORT:-}" ] || CONFIG_PORT="$DEFAULT_PORT"
+    PIDS="$(get_running_pids 2>/dev/null || true)"
+    PID_PRIMARY="$(echo "${PIDS:-}" | head -1 | tr -cd '0-9')"
+    pids_count="$(echo "${PIDS:-}" | awk 'NF{c++} END{print c+0}' 2>/dev/null)"
+    if [ -n "${PID_PRIMARY:-}" ]; then
+        ACTIVE_PORT="$(get_active_port "$PID_PRIMARY" "$CONFIG_PORT" 2>/dev/null || true)"
+        echo "DNSMASQ Family запущен (PID: $PID_PRIMARY)"
+        if [ "${pids_count:-0}" -gt 1 ] 2>/dev/null; then
+            echo "MULTI: yes (найдено несколько процессов: $(echo "${PIDS:-}" | tr '\n' ' ' | sed 's/[[:space:]]*$//'))"
+        else
+            echo "MULTI: no"
+        fi
+        echo "ConfigPort: $CONFIG_PORT"
+        if [ -n "${ACTIVE_PORT:-}" ]; then
+            echo "ActivePort: $ACTIVE_PORT"
+        fi
+        if [ -n "${ACTIVE_PORT:-}" ] && [ "$ACTIVE_PORT" != "$CONFIG_PORT" ]; then
+            echo "MISMATCH: yes (порт в конфиге изменён, требуется restart чтобы применить)"
+        else
+            echo "MISMATCH: no"
+        fi
+        echo "Логи: $DNSMASQ_LOG"
+        return 0
+    fi
+
+    echo "DNSMASQ Family не запущен"
+    echo "ConfigPort: $CONFIG_PORT"
+    return 1
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        restart
+        ;;
+    status)
+        shift || true
+        status "$@"
+        ;;
+    reload)
+        reload
+        ;;
+    *)
+        echo "Использование: $0 {start|stop|restart|reload|status}"
+        exit 1
+        ;;
+esac
+
+exit 0

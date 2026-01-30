@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}DNSMASQ full - Allow{% endblock %}
+
+{% block content %}
+    <div class="card">
+        <div class="card-header">
+            <h2>DNSMASQ full</h2>
+        </div>
+        <div class="card-content" id="dnsmasq-full-info">
+            <div class="info-item">
+                <span class="label">Статус:</span>
+                <span class="value" id="dnsmasq-full-status">Проверка...</span>
+            </div>
+            <div class="info-item">
+                <span class="label">Порт:</span>
+                <span class="value" id="dnsmasq-full-port">-</span>
+            </div>
+            <div class="card-actions">
+                <button class="btn btn-secondary" id="dnsmasq-full-restart-btn" onclick="restartDnsmasq()">Перезапустить</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Форма конфигурации DNSMASQ full -->
+    <div class="card" style="margin-top: 20px;">
+        <div class="card-header">
+            <h2>Настройки</h2>
+        </div>
+        <div class="card-content">
+            <h3 style="margin-bottom: 15px; color: #1d1d1f;">Редактируемые параметры</h3>
+            <form id="dnsmasqFullConfigForm" onsubmit="event.preventDefault(); saveDnsmasqConfig(); return false;">
+                <div class="form-row">
+                    <label for="dnsmasq-full-cache-size">Размер кэша</label>
+                    <input type="number" id="dnsmasq-full-cache-size" name="cache-size" min="100" max="100000" step="100" class="form-input">
+                </div>
+                <div class="form-row">
+                    <label for="dnsmasq-full-min-cache-ttl">Минимальный TTL кэша (сек)</label>
+                    <input type="number" id="dnsmasq-full-min-cache-ttl" name="min-cache-ttl" min="0" max="86400" step="100" class="form-input">
+                </div>
+                <div class="form-row">
+                    <label for="dnsmasq-full-max-cache-ttl">Максимальный TTL кэша (сек)</label>
+                    <input type="number" id="dnsmasq-full-max-cache-ttl" name="max-cache-ttl" min="0" max="86400" step="100" class="form-input">
+                </div>
+                <div class="form-row">
+                    <label for="dnsmasq-full-logging">Логирование</label>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <label class="switch" for="dnsmasq-full-logging">
+                            <input type="checkbox" id="dnsmasq-full-logging" name="dnsmasq-full-logging">
+                            <span class="slider"></span>
+                        </label>
+                        <button class="btn btn-secondary" type="button" onclick="openDnsmasqLogs()" style="padding: 6px 12px; font-size: 13px;">Логи</button>
+                        <button class="btn btn-secondary" type="button" id="dnsmasq-clear-logs-btn" onclick="clearDnsmasqLogs()" style="padding: 6px 12px; font-size: 13px;">Очистить</button>
+                    </div>
+                </div>
+            </form>
+            <div class="card-actions">
+                <button class="btn btn-secondary" type="button" onclick="openDnsmasqConfigEditor()">Изменить конфигурацию вручную</button>
+                <button class="btn btn-primary" type="button" onclick="saveDnsmasqConfig()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block modals %}
+    {% include 'partials/modals-dnsmasq.html' %}
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='dnsmasq.js') }}"></script>
+{% endblock %}
+

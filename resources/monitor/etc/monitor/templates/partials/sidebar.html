@@ -1,0 +1,26 @@
+<div class="sidebar-menu">
+    <div class="logo-container">
+        <h1 class="logo">
+            <span class="logo-all">All</span><span class="logo-allow">ow</span>
+        </h1>
+    </div>
+    <a href="{{ url_for('dashboard') }}" class="menu-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
+        <span>Системный монитор</span>
+    </a>
+    <a href="{{ url_for('stubby_page') }}" class="menu-item {% if request.endpoint == 'stubby_page' %}active{% endif %}">
+        <span>Stubby</span>
+    </a>
+    <a href="{{ url_for('stubby_family_page') }}" class="menu-item {% if request.endpoint == 'stubby_family_page' %}active{% endif %}">
+        <span>Stubby Family</span>
+    </a>
+    <a href="{{ url_for('dnsmasq_page') }}" class="menu-item {% if request.endpoint == 'dnsmasq_page' %}active{% endif %}">
+        <span>DNSMASQ full</span>
+    </a>
+    <a href="{{ url_for('dnsmasq_family_page') }}" class="menu-item {% if request.endpoint == 'dnsmasq_family_page' %}active{% endif %}">
+        <span>DNSMASQ Family</span>
+    </a>
+    <a href="{{ url_for('routing_page') }}" class="menu-item {% if request.endpoint == 'routing_page' %}active{% endif %}">
+        <span>Маршрутизация</span>
+    </a>
+</div>
+

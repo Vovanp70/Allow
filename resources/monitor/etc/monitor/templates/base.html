@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Allow{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <div class="main-container">
+        <!-- Боковое меню слева -->
+        {% include 'partials/sidebar.html' %}
+
+        <!-- Область контента -->
+        <div class="content-area">
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+
+    {% block modals %}{% endblock %}
+
+    <!-- Переиспользуемые компоненты -->
+    {% include 'partials/modal-config-editor.html' %}
+    {% include 'partials/modal-logs-viewer.html' %}
+    {% include 'partials/modal-confirm.html' %}
+    {% include 'partials/progress-overlay.html' %}
+
+    <!-- Всплывающее уведомление -->
+    <div id="toast" class="toast">
+        <div class="toast-content">
+            <span id="toast-message"></span>
+        </div>
+    </div>
+
+    <!-- Подключение общих JS -->
+    <script src="{{ url_for('static', filename='api-core.js') }}"></script>
+    <script src="{{ url_for('static', filename='config-editor.js') }}"></script>
+    <script src="{{ url_for('static', filename='logs-viewer.js') }}"></script>
+    <script src="{{ url_for('static', filename='confirm-modal.js') }}"></script>
+    <script src="{{ url_for('static', filename='progress-overlay.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
+

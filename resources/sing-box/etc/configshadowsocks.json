@@ -1,0 +1,83 @@
+{
+  "log": {
+    "disabled": false,
+    "level": "trace",
+    "output": "/opt/var/log/allow/sing-box/sing-box.log",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      {
+        "tag": "dns-direct",
+        "address": "1.1.1.1",
+        "detour": "direct"
+      }
+    ],
+    "strategy": "ipv4_only"
+  },
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "interface_name": "sbtun0",
+      "address": [
+        "10.10.0.2/24"
+      ],
+      "auto_route": false,
+      "stack": "system",
+      "sniff": true,
+      "sniff_override_destination": true
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "shadowsocks",
+      "tag": "ss-out",
+      "server": "89.125.3.252",
+      "server_port": 29027,
+      "method": "chacha20-ietf-poly1305",
+      "password": "8DLiM6W954nHUOWSOA7qGX"
+    },
+    {
+      "type": "vless",
+      "tag": "vless-out",
+      "server": "privateaqt.duckdns.org",
+      "server_port": 2053,
+      "uuid": "ac482575-317a-49b9-a184-44134643c417",
+      "flow": "",
+      "tls": {
+        "enabled": true,
+        "server_name": "privateaqt.duckdns.org",
+        "insecure": false,
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
+        "alpn": [
+          "h2",
+          "http/1.1"
+        ]
+      },
+      "transport": {
+        "type": "ws",
+        "path": "/xray",
+        "headers": {
+          "Host": "privateaqt.duckdns.org"
+        }
+      }
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    }
+  ],
+  "route": {
+    "auto_detect_interface": true,
+    "final": "ss-out"
+  }
+}
+

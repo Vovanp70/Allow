@@ -1,0 +1,240 @@
+#!/bin/sh
+
+### BEGIN INIT INFO
+# Provides:          sing-box
+# Required-Start:    $network
+# Required-Stop:     $network
+# Default-Start:     99
+# Default-Stop:
+### END INIT INFO
+
+PREFIX="/opt"
+BIN="$PREFIX/bin/sing-box"
+CONF_DIR="$PREFIX/etc/allow/sing-box"
+CONF_FILE="$CONF_DIR/config.json"
+LOG_DIR="$PREFIX/var/log/allow/sing-box"
+PIDFILE="$PREFIX/var/run/sing-box.pid"
+ROUTE_TABLE=111
+ROUTE_MARK=0x4
+IFACE="sbtun0"
+
+# Firewall / netfilter settings (iptables)
+MARK_VALUE="${ROUTE_MARK}" # keep mark value consistent with routing
+IPSET_NAME="bypass"
+
+# If NDM runs this script from /opt/etc/ndm/netfilter.d, it can set env var "table"
+# to the currently-applied iptables table (e.g. mangle/filter/nat).
+ndm_table="${table:-}"
+
+# --- Firewall rules (mangle: mark/connmark) ---
+mangle_del_rules() {
+  # Remove in reverse order; tolerate missing rules.
+  iptables -t mangle -D PREROUTING -m set --match-set "${IPSET_NAME}" dst -m set ! --match-set nonbypass dst -m mark --mark "${MARK_VALUE}/${MARK_VALUE}" -j CONNMARK --save-mark --nfmask 0xffffffff --ctmask 0xffffffff 2>/dev/null || true
+  iptables -t mangle -D PREROUTING -m set --match-set "${IPSET_NAME}" dst -m set ! --match-set nonbypass dst -j CONNMARK --save-mark --nfmask 0xffffffff --ctmask 0xffffffff 2>/dev/null || true
+  iptables -t mangle -D PREROUTING -m set --match-set "${IPSET_NAME}" dst -m set ! --match-set nonbypass dst -j MARK --set-xmark "${MARK_VALUE}/${MARK_VALUE}" 2>/dev/null || true
+  iptables -t mangle -D PREROUTING -m set --match-set "${IPSET_NAME}" dst -m set ! --match-set nonbypass dst -j MARK --set-mark "${MARK_VALUE}" 2>/dev/null || true
+
+  iptables -t mangle -D OUTPUT -m set --match-set "${IPSET_NAME}" dst -m set ! --match-set nonbypass dst -m mark --mark "${MARK_VALUE}/${MARK_VALUE}" -j CONNMARK --save-mark --nfmask 0xffffffff --ctmask 0xffffffff 2>/dev/null || true
+  iptables -t mangle -D OUTPUT -m set --match-set "${IPSET_NAME}" dst -m set ! --match-set nonbypass dst -j CONNMARK --save-mark --nfmask 0xffffffff --ctmask 0xffffffff 2>/dev/null || true
+  iptables -t mangle -D OUTPUT -m set --match-set "${IPSET_NAME}" dst -m set ! --match-set nonbypass dst -j MARK --set-xmark "${MARK_VALUE}/${MARK_VALUE}" 2>/dev/null || true
+  iptables -t mangle -D OUTPUT -m set --match-set "${IPSET_NAME}" dst -m set ! --match-set nonbypass dst -j MARK --set-mark "${MARK_VALUE}" 2>/dev/null || true
+}
+
+mangle_add_rules() {
+  # Both ipsets must exist: iptables set match requires existing sets.
+  if ! ipset list "${IPSET_NAME}" >/dev/null 2>&1; then
+    echo "[!] ipset '${IPSET_NAME}' not found, skipping mangle mark rules"
+    return 1
+  fi
+  if ! ipset list nonbypass >/dev/null 2>&1; then
+    echo "[!] ipset 'nonbypass' not found, skipping mangle mark rules (rules use ! --match-set nonbypass)"
+    return 1
+  fi
+
+  # Append (not insert) so hotspot / system rules can run first.
+  iptables -t mangle -A PREROUTING -m set --match-set "${IPSET_NAME}" dst -m set ! --match-set nonbypass dst -j MARK --set-xmark "${MARK_VALUE}/${MARK_VALUE}" 2>/dev/null || true
+  iptables -t mangle -A PREROUTING -m set --match-set "${IPSET_NAME}" dst -m set ! --match-set nonbypass dst -m mark --mark "${MARK_VALUE}/${MARK_VALUE}" -j CONNMARK --save-mark --nfmask 0xffffffff --ctmask 0xffffffff 2>/dev/null || true
+  iptables -t mangle -A OUTPUT -m set --match-set "${IPSET_NAME}" dst -m set ! --match-set nonbypass dst -j MARK --set-xmark "${MARK_VALUE}/${MARK_VALUE}" 2>/dev/null || true
+  iptables -t mangle -A OUTPUT -m set --match-set "${IPSET_NAME}" dst -m set ! --match-set nonbypass dst -m mark --mark "${MARK_VALUE}/${MARK_VALUE}" -j CONNMARK --save-mark --nfmask 0xffffffff --ctmask 0xffffffff 2>/dev/null || true
+
+  echo "[+] mangle mark rules added (${IPSET_NAME} !nonbypass -> ${MARK_VALUE})"
+}
+
+# --- Firewall rules (filter: allow sbtun0) ---
+filter_del_rules() {
+  iptables -D FORWARD -o "${IFACE}" -j ACCEPT 2>/dev/null || true
+  iptables -D FORWARD -i "${IFACE}" -j ACCEPT 2>/dev/null || true
+  iptables -D OUTPUT -o "${IFACE}" -j ACCEPT 2>/dev/null || true
+  iptables -D INPUT -i "${IFACE}" -j ACCEPT 2>/dev/null || true
+}
+
+filter_add_rules() {
+  iptables -I INPUT -i "${IFACE}" -j ACCEPT 2>/dev/null || true
+  iptables -I OUTPUT -o "${IFACE}" -j ACCEPT 2>/dev/null || true
+  iptables -I FORWARD -i "${IFACE}" -j ACCEPT 2>/dev/null || true
+  iptables -I FORWARD -o "${IFACE}" -j ACCEPT 2>/dev/null || true
+}
+
+# Apply/unapply firewall depending on NDM table phase.
+fw_should_apply_mangle() { [ -z "$ndm_table" ] || [ "$ndm_table" = "mangle" ]; }
+fw_should_apply_filter() { [ -z "$ndm_table" ] || [ "$ndm_table" = "filter" ]; }
+
+start_fw() {
+  fw_should_apply_mangle && mangle_add_rules || true
+  fw_should_apply_filter && filter_add_rules || true
+}
+
+stop_fw() {
+  fw_should_apply_mangle && mangle_del_rules || true
+  fw_should_apply_filter && filter_del_rules || true
+}
+
+restart_fw() {
+  stop_fw
+  start_fw
+}
+
+# Настройка маршрутизации для sbtun0
+setup_routing() {
+    # Ждем появления интерфейса
+    local retries=10
+    while [ $retries -gt 0 ]; do
+        if ip link show "$IFACE" >/dev/null 2>&1; then
+            break
+        fi
+        sleep 1
+        retries=$((retries - 1))
+    done
+    
+    if ! ip link show "$IFACE" >/dev/null 2>&1; then
+        echo "[!] Interface $IFACE not found, skipping routing setup"
+        return 1
+    fi
+    
+    # Добавляем правило маршрутизации (если еще нет)
+    # Важно: используем маску ${ROUTE_MARK}/${ROUTE_MARK}, чтобы матчить по биту,
+    # сохраняя остальные биты метки (например, hotspot/детский Wi‑Fi ставит 0xffffaaa).
+    # Ставим priority=99, чтобы правило отрабатывало до правил hotspot (обычно 100/101).
+    if ! ip rule show | grep -q "fwmark ${ROUTE_MARK}/${ROUTE_MARK}.*lookup ${ROUTE_TABLE}"; then
+        ip rule add fwmark ${ROUTE_MARK}/${ROUTE_MARK} table ${ROUTE_TABLE} priority 99 2>/dev/null && \
+            echo "[+] Added ip rule: fwmark ${ROUTE_MARK}/${ROUTE_MARK} prio 99 -> table ${ROUTE_TABLE}"
+    fi
+    
+    # Добавляем маршрут по умолчанию (удаляем старый, если есть)
+    ip route del table ${ROUTE_TABLE} default dev ${IFACE} 2>/dev/null || true
+    ip route add table ${ROUTE_TABLE} default dev ${IFACE} 2>/dev/null && \
+        echo "[+] Added route: table ${ROUTE_TABLE} default dev ${IFACE}"
+}
+
+cleanup_routing() {
+    # Удаляем правило маршрутизации (пробуем новый и старый форматы)
+    ip rule del fwmark ${ROUTE_MARK}/${ROUTE_MARK} table ${ROUTE_TABLE} priority 99 2>/dev/null || true
+    ip rule del fwmark ${ROUTE_MARK}/${ROUTE_MARK} table ${ROUTE_TABLE} 2>/dev/null || true
+    ip rule del fwmark ${ROUTE_MARK} table ${ROUTE_TABLE} 2>/dev/null || true
+    
+    # Удаляем маршрут
+    ip route del table ${ROUTE_TABLE} default dev ${IFACE} 2>/dev/null || true
+}
+
+start() {
+  echo "[*] Starting sing-box..."
+  mkdir -p "$LOG_DIR"
+  mkdir -p "$(dirname "$PIDFILE")"
+
+  if [ ! -x "$BIN" ]; then
+    echo "[!] sing-box binary not found at $BIN"
+    return 1
+  fi
+
+  if [ ! -f "$CONF_FILE" ]; then
+    echo "[!] Config not found at $CONF_FILE"
+    return 1
+  fi
+
+  if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+    echo "[*] sing-box already running with PID $(cat "$PIDFILE")"
+    return 0
+  fi
+
+  "$BIN" run -c "$CONF_FILE" >/dev/null 2>>"$LOG_DIR/error.log" &
+  echo $! >"$PIDFILE"
+  echo "[+] sing-box started with PID $(cat "$PIDFILE")"
+  
+  # Ждем немного для поднятия интерфейса, затем настраиваем маршрутизацию
+  sleep 2
+  setup_routing
+
+  # Apply firewall rules for sing-box traffic (idempotent via restart-fw)
+  restart_fw
+}
+
+stop() {
+  echo "[*] Stopping sing-box..."
+  # Remove firewall rules early, while iface name is still known
+  stop_fw
+
+  if [ -f "$PIDFILE" ]; then
+    PID="$(cat "$PIDFILE")"
+    if kill -0 "$PID" 2>/dev/null; then
+      kill "$PID" 2>/dev/null || true
+      sleep 1
+      if kill -0 "$PID" 2>/dev/null; then
+        echo "[*] sing-box still running, sending SIGKILL..."
+        kill -9 "$PID" 2>/dev/null || true
+      fi
+    fi
+    rm -f "$PIDFILE"
+  else
+    echo "[*] No PID file, nothing to stop."
+  fi
+  
+  # Дополнительная страховка: убиваем только реальные процессы sing-box (бинарник),
+  # не трогая install-скрипты/сам init-скрипт.
+  EXTRA_PIDS=""
+  if command -v pidof >/dev/null 2>&1; then
+    EXTRA_PIDS="$(pidof sing-box 2>/dev/null || true)"
+  else
+    EXTRA_PIDS="$(ps w 2>/dev/null | awk '$0 ~ /\\/opt\\/bin\\/sing-box/ && $0 ~ / run / {print $1}' 2>/dev/null || true)"
+  fi
+
+  for P in $EXTRA_PIDS; do
+    [ -z "$P" ] && continue
+    [ "$P" = "$$" ] && continue
+    [ -n "${PID:-}" ] && [ "$P" = "$PID" ] && continue
+    kill -9 "$P" 2>/dev/null || true
+  done
+
+  cleanup_routing
+}
+
+restart() {
+  stop
+  start
+}
+
+status() {
+  if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+    echo "[+] sing-box is running with PID $(cat "$PIDFILE")"
+    return 0
+  else
+    echo "[-] sing-box is not running"
+    return 1
+  fi
+}
+
+case "$1" in
+  start)   start ;;
+  stop)    stop ;;
+  restart) restart ;;
+  status)  status ;;
+  start-fw|start_fw)   start_fw ;;
+  stop-fw|stop_fw)     stop_fw ;;
+  restart-fw|restart_fw) restart_fw ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|status|start-fw|stop-fw|restart-fw}"
+    exit 1
+    ;;
+esac
+
+exit 0
+

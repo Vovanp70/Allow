@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Маршрутизация - Allow{% endblock %}
+
+{% block content %}
+<div class="routing-container">
+    <div class="routing-header" style="margin-bottom: 20px; display: flex; justify-content: flex-end; align-items: center;">
+        <button id="save-routing-changes-btn" class="btn btn-primary" onclick="saveAllRoutingChanges()" style="display: none;">
+            Сохранить изменения
+        </button>
+    </div>
+    <div class="routing-columns">
+        <!-- Колонка 1: Напрямую -->
+        <div class="routing-column" id="direct-column">
+            <div class="column-header">
+                <h2>Напрямую</h2>
+                <button class="btn btn-primary btn-sm" onclick="addBlock('direct')">+ Добавить блок</button>
+            </div>
+            <div class="blocks-container" id="direct-blocks">
+                <!-- Блоки будут загружены через JS -->
+            </div>
+        </div>
+
+        <!-- Колонка 2: Встроенные инструменты обхода -->
+        <div class="routing-column" id="bypass-column">
+            <div class="column-header">
+                <h2>Встроенные инструменты обхода</h2>
+                <button class="btn btn-primary btn-sm" onclick="addBlock('bypass')">+ Добавить блок</button>
+            </div>
+            <div class="blocks-container" id="bypass-blocks">
+                <!-- Блоки будут загружены через JS -->
+            </div>
+        </div>
+
+        <!-- Колонка 3: VPN -->
+        <div class="routing-column" id="vpn-column">
+            <div class="column-header">
+                <h2>VPN</h2>
+                <button class="btn btn-primary btn-sm" onclick="addBlock('vpn')">+ Добавить блок</button>
+            </div>
+            <div class="blocks-container" id="vpn-blocks">
+                <!-- Блоки будут загружены через JS -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block modals %}
+    {% include 'partials/modal-config-editor.html' %}
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='routing.js') }}"></script>
+{% endblock %}
+

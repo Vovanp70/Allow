@@ -1,0 +1,20 @@
+<!-- Переиспользуемое модальное окно подтверждения -->
+<div id="confirmModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header">
+            <h2 id="confirmModalTitle">Подтверждение</h2>
+            <span class="close" onclick="closeConfirmModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <p id="confirmModalMessage"></p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" id="confirmModalCancelBtn" onclick="closeConfirmModal()">Отмена</button>
+            <button class="btn btn-danger" id="confirmModalOkBtn" onclick="confirmModalAction()">Подтвердить</button>
+        </div>
+    </div>
+</div>
+
+
+
+

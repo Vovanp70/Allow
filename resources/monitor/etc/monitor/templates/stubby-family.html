@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Stubby Family - Allow{% endblock %}
+
+{% block content %}
+    <div class="card">
+        <div class="card-header">
+            <h2>Stubby Family</h2>
+        </div>
+        <div class="card-content" id="stubby-family-page-info">
+            <div class="info-item">
+                <span class="label">Статус:</span>
+                <span class="value" id="stubby-family-status">Проверка...</span>
+            </div>
+            <div class="info-item">
+                <span class="label">Порт:</span>
+                <span class="value" id="stubby-family-port">-</span>
+            </div>
+            <div class="card-actions">
+                <button class="btn btn-primary" id="stubby-family-start-btn" onclick="startStubbyFamily()" style="display: none;">Запустить</button>
+                <button class="btn btn-danger" id="stubby-family-stop-btn" onclick="stopStubbyFamily()" style="display: none;">Остановить</button>
+                <button class="btn btn-secondary" onclick="openStubbyFamilyConfigModal()">Конфигурация</button>
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='stubby.js') }}"></script>
+{% endblock %}
+

@@ -1,0 +1,109 @@
+<!-- Контент страницы: Системный монитор -->
+<div>
+    <div class="cards-grid">
+        <!-- Карточка: Общая информация -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Общая информация</h2>
+            </div>
+            <div class="card-content" id="system-info">
+                <div class="info-item">
+                    <span class="label">Интернет:</span>
+                    <span class="value" id="internet-status">Проверка...</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Внешний IP:</span>
+                    <span class="value" id="external-ip">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Карточка: Stubby -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Stubby</h2>
+            </div>
+            <div class="card-content" id="stubby-info">
+                <div class="info-item">
+                    <span class="label">Статус:</span>
+                    <span class="value" id="stubby-status">Проверка...</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Порт:</span>
+                    <span class="value" id="stubby-port">-</span>
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-primary" id="stubby-start-btn" onclick="startStubby()" style="display: none;">Запустить</button>
+                    <button class="btn btn-danger" id="stubby-stop-btn" onclick="stopStubby()" style="display: none;">Остановить</button>
+                    <button class="btn btn-secondary" onclick="openStubbyConfigModal()">Конфигурация</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Карточка: Stubby Family -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Stubby Family</h2>
+            </div>
+            <div class="card-content" id="stubby-family-info">
+                <div class="info-item">
+                    <span class="label">Статус:</span>
+                    <span class="value" id="stubby-family-status">Проверка...</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Порт:</span>
+                    <span class="value" id="stubby-family-port">-</span>
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-primary" id="stubby-family-start-btn" onclick="startStubbyFamily()" style="display: none;">Запустить</button>
+                    <button class="btn btn-danger" id="stubby-family-stop-btn" onclick="stopStubbyFamily()" style="display: none;">Остановить</button>
+                    <button class="btn btn-secondary" onclick="openStubbyFamilyConfigModal()">Конфигурация</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Карточка: DNSMASQ full -->
+        <div class="card">
+            <div class="card-header">
+                <h2>DNSMASQ full</h2>
+            </div>
+            <div class="card-content" id="dnsmasq-info">
+                <div class="info-item">
+                    <span class="label">Статус:</span>
+                    <span class="value" id="dnsmasq-status">Проверка...</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Порт:</span>
+                    <span class="value" id="dnsmasq-port">-</span>
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-secondary" id="dnsmasq-restart-btn" onclick="restartDnsmasq()">Перезапустить</button>
+                    <button class="btn btn-secondary" onclick="openDnsmasqConfigEditor()">Конфигурация</button>
+                    <button class="btn btn-secondary" onclick="openDnsmasqLogs()">Логи</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Карточка: DNSMASQ Family -->
+        <div class="card">
+            <div class="card-header">
+                <h2>DNSMASQ Family</h2>
+            </div>
+            <div class="card-content" id="dnsmasq-family-info">
+                <div class="info-item">
+                    <span class="label">Статус:</span>
+                    <span class="value" id="dnsmasq-family-status">Проверка...</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">Порт:</span>
+                    <span class="value" id="dnsmasq-family-port">-</span>
+                </div>
+                <div class="card-actions">
+                    <button class="btn btn-secondary" id="dnsmasq-family-restart-btn" onclick="restartDnsmasqFamily()">Перезапустить</button>
+                    <button class="btn btn-secondary" onclick="openDnsmasqFamilyConfigEditor()">Конфигурация</button>
+                    <button class="btn btn-secondary" onclick="openDnsmasqFamilyLogs()">Логи</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

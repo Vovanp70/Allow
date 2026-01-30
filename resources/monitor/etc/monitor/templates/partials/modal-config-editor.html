@@ -1,0 +1,23 @@
+<!-- Переиспользуемое модальное окно редактора конфигурации -->
+<div id="configEditorModal" class="modal">
+    <div class="modal-content config-editor-modal">
+        <div class="modal-header">
+            <h2 id="configEditorTitle">Редактор конфигурации</h2>
+            <span class="close" onclick="closeConfigEditor()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label>Файл:</label>
+                <span id="configEditorFilePath" style="font-family: monospace; color: #6e6e73; font-size: 13px;"></span>
+            </div>
+            <div class="form-group">
+                <textarea id="configEditorText" rows="35" class="form-input config-editor-textarea"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeConfigEditor()">Отмена</button>
+            <button class="btn btn-primary" onclick="saveConfigEditor()">Сохранить</button>
+        </div>
+    </div>
+</div>
+

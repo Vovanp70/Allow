@@ -1,0 +1,24 @@
+<!-- Переиспользуемое модальное окно просмотра логов -->
+<div id="logsViewerModal" class="modal">
+    <div class="modal-content logs-viewer-modal">
+        <div class="modal-header">
+            <h2 id="logsViewerTitle">Логи</h2>
+            <span class="close" onclick="closeLogsViewer()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="form-group" style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+                <label style="margin: 0;">Количество строк:</label>
+                <input type="number" id="logsViewerLines" value="100" min="10" max="1000" class="form-input" style="width: 100px;">
+                <button class="btn btn-secondary" onclick="loadLogsViewer()">Обновить</button>
+                <span id="logsViewerWarning" style="color: #ff9500; font-size: 13px; margin-left: auto;"></span>
+            </div>
+            <div class="form-group" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                <textarea id="logsViewerText" rows="35" class="form-input logs-viewer-textarea" readonly></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeLogsViewer()">Закрыть</button>
+        </div>
+    </div>
+</div>
+

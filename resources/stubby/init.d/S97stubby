@@ -1,0 +1,389 @@
+#!/bin/sh
+
+# Скрипт автозапуска Stubby для DNS-over-TLS (DoT)
+# Stubby должен запускаться ДО DNSMASQ full
+
+STUBBY_CONF="/opt/etc/allow/stubby/stubby.yml"
+STUBBY_PID="/opt/var/run/stubby.pid"
+
+DEFAULT_PORT="41500"
+
+parse_config_port() {
+    # listen_addresses:
+    #   - 127.0.0.1@41500
+    [ -f "$STUBBY_CONF" ] || return 1
+    CONF_PORT="$(grep -E "^[[:space:]]*-[[:space:]]*127\.0\.0\.1@[0-9]+" "$STUBBY_CONF" 2>/dev/null | head -1 | sed 's/.*@\([0-9][0-9]*\).*/\1/')"
+    CONF_PORT="$(echo "${CONF_PORT:-}" | tr -cd '0-9')"
+    if [ -n "$CONF_PORT" ] && [ "$CONF_PORT" -gt 0 ] 2>/dev/null; then
+        echo "$CONF_PORT"
+        return 0
+    fi
+    return 1
+}
+
+is_our_stubby_pid() {
+    pid="$(echo "${1:-}" | tr -cd '0-9')"
+    [ -n "${pid:-}" ] || return 1
+    kill -0 "$pid" 2>/dev/null || return 1
+
+    # Prefer /proc cmdline check (most reliable, prevents PID reuse issues)
+    if [ -r "/proc/$pid/cmdline" ]; then
+        cmd="$(tr '\000' ' ' <"/proc/$pid/cmdline" 2>/dev/null | tr -d '\r\n')"
+        [ -n "${cmd:-}" ] || return 1
+        case "$cmd" in
+            *"/stubby "*|*" stubby "*|stubby\ *) ;;
+            *) return 1 ;;
+        esac
+        # Accept both: "-C /path" and "-C/path"
+        case "$cmd" in
+            *"-C $STUBBY_CONF"*|*"-C$STUBBY_CONF"*) return 0 ;;
+            *) return 1 ;;
+        esac
+    fi
+
+    # Fallback without /proc: strict pgrep -f patterns around -C.
+    for pat in \
+        "stubby.*-C[[:space:]]*$STUBBY_CONF" \
+        "stubby.*-C$STUBBY_CONF"
+    do
+        for p in $(pgrep -f "$pat" 2>/dev/null); do
+            p="$(echo "$p" | tr -cd '0-9')"
+            [ -n "${p:-}" ] || continue
+            if [ "$p" = "$pid" ]; then
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
+get_running_pids() {
+    # Returns 0/1/many PIDs (one per line) for our stubby instance(s).
+
+    # 1) Prefer PID file, but verify it's actually our process.
+    if [ -f "$STUBBY_PID" ]; then
+        pid_file="$(cat "$STUBBY_PID" 2>/dev/null | tr -cd '0-9')"
+        if [ -n "${pid_file:-}" ] && is_our_stubby_pid "$pid_file" 2>/dev/null; then
+            echo "$pid_file"
+            return 0
+        fi
+    fi
+
+    # 2) Scan processes and verify via /proc cmdline.
+    found=0
+    for p in $(pgrep -x stubby 2>/dev/null); do
+        p="$(echo "$p" | tr -cd '0-9')"
+        [ -n "${p:-}" ] || continue
+        if is_our_stubby_pid "$p" 2>/dev/null; then
+            echo "$p"
+            found=1
+        fi
+    done
+    if [ "$found" -eq 1 ]; then
+        return 0
+    fi
+
+    # 3) Fallback if pgrep -x not supported: scan pgrep -f and verify.
+    for p in $(pgrep -f "stubby" 2>/dev/null); do
+        p="$(echo "$p" | tr -cd '0-9')"
+        [ -n "${p:-}" ] || continue
+        if is_our_stubby_pid "$p" 2>/dev/null; then
+            echo "$p"
+            found=1
+        fi
+    done
+    [ "$found" -eq 1 ] && return 0
+    return 1
+}
+
+get_running_pid() {
+    # Backward-compatible: first PID only.
+    pid="$(get_running_pids 2>/dev/null | head -1 | tr -cd '0-9')"
+    if [ -n "${pid:-}" ] && kill -0 "$pid" 2>/dev/null; then
+        echo "$pid"
+        return 0
+    fi
+    return 1
+}
+
+get_active_port() {
+    # $1: pid
+    pid="$1"
+    [ -n "${pid:-}" ] || return 1
+
+    # netstat (common on Entware/busybox)
+    if command -v netstat >/dev/null 2>&1; then
+        # Try to match by "pid/program"
+        la="$(netstat -tlnp 2>/dev/null | awk -v pid="$pid" '$0 ~ pid"/" {print $4; exit}')"
+        if [ -n "${la:-}" ]; then
+            p="$(echo "$la" | sed 's/.*:\([0-9][0-9]*\)$/\1/' | tr -cd '0-9')"
+            [ -n "$p" ] && echo "$p" && return 0
+        fi
+    fi
+
+    # ss (newer systems)
+    if command -v ss >/dev/null 2>&1; then
+        la="$(ss -tlnp 2>/dev/null | awk -v pid="$pid" '$0 ~ "pid="pid {print $4; exit}')"
+        if [ -n "${la:-}" ]; then
+            p="$(echo "$la" | sed 's/.*:\([0-9][0-9]*\)$/\1/' | tr -cd '0-9')"
+            [ -n "$p" ] && echo "$p" && return 0
+        fi
+    fi
+
+    return 1
+}
+
+status_kv() {
+    CONFIG_PORT="$(parse_config_port 2>/dev/null || true)"
+    [ -n "${CONFIG_PORT:-}" ] || CONFIG_PORT="$DEFAULT_PORT"
+
+    PIDS="$(get_running_pids 2>/dev/null || true)"
+    PID_PRIMARY="$(echo "${PIDS:-}" | head -1 | tr -cd '0-9')"
+    pids_count="$(echo "${PIDS:-}" | awk 'NF{c++} END{print c+0}' 2>/dev/null)"
+    if [ "${pids_count:-0}" -gt 1 ] 2>/dev/null; then
+        MULTI="yes"
+    else
+        MULTI="no"
+    fi
+    PIDS_CSV="$(echo "${PIDS:-}" | tr '\n' ',' | sed 's/,$//' 2>/dev/null)"
+
+    ACTIVE_PORT=""
+    STATUS="notrunning"
+
+    if [ -n "${PID_PRIMARY:-}" ] && kill -0 "$PID_PRIMARY" 2>/dev/null; then
+        STATUS="running"
+        ACTIVE_PORT="$(get_active_port "$PID_PRIMARY" 2>/dev/null || true)"
+        # keep pidfile fresh
+        echo "$PID_PRIMARY" >"$STUBBY_PID" 2>/dev/null || true
+    fi
+
+    if [ "$STATUS" = "running" ] && [ -n "${ACTIVE_PORT:-}" ] && [ "$ACTIVE_PORT" != "$CONFIG_PORT" ]; then
+        MISMATCH="yes"
+    else
+        MISMATCH="no"
+    fi
+
+    if [ "$STATUS" = "running" ] && [ -n "${ACTIVE_PORT:-}" ]; then
+        EFFECTIVE_PORT="$ACTIVE_PORT"
+    else
+        EFFECTIVE_PORT="$CONFIG_PORT"
+    fi
+
+    echo "STATUS=$STATUS"
+    echo "CONFIG_PORT=$CONFIG_PORT"
+    echo "ACTIVE_PORT=$ACTIVE_PORT"
+    echo "EFFECTIVE_PORT=$EFFECTIVE_PORT"
+    echo "MISMATCH=$MISMATCH"
+    echo "MULTI=$MULTI"
+    echo "PIDS=$PIDS_CSV"
+    echo "CONF_FILE=$STUBBY_CONF"
+    echo "PID_FILE=$STUBBY_PID"
+    echo "PID=$PID_PRIMARY"
+}
+
+# Определяем бинарник stubby (системный или entware)
+if [ -x /usr/sbin/stubby ]; then
+    STUBBY_BIN="/usr/sbin/stubby"
+elif [ -x /opt/sbin/stubby ]; then
+    STUBBY_BIN="/opt/sbin/stubby"
+else
+    STUBBY_BIN="stubby"
+fi
+
+# Создаем директорию для PID файлов
+mkdir -p /opt/var/run
+
+start() {
+    echo "Запуск Stubby..."
+
+    # Policy 1: если процесс уже запущен, НЕ убиваем его из-за смены порта в конфиге.
+    RUN_PID="$(get_running_pid 2>/dev/null || true)"
+    if [ -n "${RUN_PID:-}" ]; then
+        RUN_ACTIVE_PORT="$(get_active_port "$RUN_PID" 2>/dev/null || true)"
+        RUN_CONFIG_PORT="$(parse_config_port 2>/dev/null || true)"
+        [ -n "${RUN_CONFIG_PORT:-}" ] || RUN_CONFIG_PORT="$DEFAULT_PORT"
+        echo "Stubby уже запущен (PID: $RUN_PID)"
+        if [ -n "${RUN_ACTIVE_PORT:-}" ]; then
+            echo "ActivePort: ${RUN_ACTIVE_PORT}"
+        fi
+        echo "ConfigPort: ${RUN_CONFIG_PORT}"
+        if [ -n "${RUN_ACTIVE_PORT:-}" ] && [ "$RUN_ACTIVE_PORT" != "$RUN_CONFIG_PORT" ]; then
+            echo "MISMATCH: yes (порт в конфиге изменён, требуется restart чтобы применить)"
+        fi
+        echo "$RUN_PID" >"$STUBBY_PID" 2>/dev/null || true
+        return 0
+    fi
+
+    # Порт для запуска берём из конфига (или из env, если пользователь передал явно)
+    STUBBY_PORT="${STUBBY_PORT:-}"
+    if [ -z "$STUBBY_PORT" ]; then
+        STUBBY_PORT="$(parse_config_port 2>/dev/null || true)"
+    fi
+    [ -n "$STUBBY_PORT" ] || STUBBY_PORT="$DEFAULT_PORT"
+
+    # Проверяем, занят ли порт другим процессом
+    PORT_PID=$(netstat -tlnp 2>/dev/null | grep ":${STUBBY_PORT}" | awk '{print $7}' | cut -d'/' -f1 | head -1)
+    if [ -n "$PORT_PID" ] && [ "$PORT_PID" != "-" ]; then
+        echo "Ошибка: порт ${STUBBY_PORT} занят процессом с PID $PORT_PID"
+        return 1
+    fi
+
+    # Проверяем наличие конфигурационного файла
+    if [ ! -f "$STUBBY_CONF" ]; then
+        echo "Ошибка: конфигурационный файл $STUBBY_CONF не найден"
+        return 1
+    fi
+
+    # Проверяем, что конфигурационный файл не пустой
+    if [ ! -s "$STUBBY_CONF" ]; then
+        echo "Ошибка: конфигурационный файл $STUBBY_CONF пуст"
+        return 1
+    fi
+
+    # Проверяем, установлен ли stubby
+    if ! command -v "$STUBBY_BIN" >/dev/null 2>&1; then
+        echo "Ошибка: stubby не установлен. Установите через: opkg install stubby"
+        return 1
+    fi
+
+    # Запускаем Stubby в фоновом режиме
+    echo "Запуск процесса Stubby..."
+    "$STUBBY_BIN" -C "$STUBBY_CONF" -v 6 -U nobody -G nobody &
+    STUBBY_PID_START=$!
+
+    echo "$STUBBY_PID_START" > "$STUBBY_PID"
+
+    # Ждем, чтобы процесс запустился
+    sleep 3
+
+    # Проверяем, что порт начал слушаться
+    for i in 1 2 3 4 5; do
+        if netstat -tlnp 2>/dev/null | grep -q ":${STUBBY_PORT}"; then
+            break
+        fi
+        sleep 1
+    done
+
+    # Ищем процесс stubby
+    PID="$(get_running_pid 2>/dev/null || true)"
+
+    # Проверяем, что процесс запустился
+    if [ -n "$PID" ] && kill -0 "$PID" 2>/dev/null; then
+        PORT_CHECK=$(netstat -tlnp 2>/dev/null | grep ":${STUBBY_PORT}")
+        if [ -n "$PORT_CHECK" ]; then
+            echo "$PID" > "$STUBBY_PID"
+            echo "Stubby запущен (PID: $PID)"
+            echo "Stubby слушает на порту ${STUBBY_PORT}"
+            return 0
+        else
+            echo "Предупреждение: процесс запущен (PID: $PID), но порт ${STUBBY_PORT} не слушается"
+            echo "$PID" > "$STUBBY_PID"
+            return 0
+        fi
+    fi
+
+    echo "Ошибка: не удалось запустить Stubby"
+    return 1
+}
+
+stop() {
+    echo "Остановка Stubby..."
+
+    PIDS="$(get_running_pids 2>/dev/null || true)"
+    if [ -n "${PIDS:-}" ]; then
+        echo "$PIDS" | while read -r PID; do
+            PID="$(echo "${PID:-}" | tr -cd '0-9')"
+            [ -n "${PID:-}" ] || continue
+            if kill -0 "$PID" 2>/dev/null; then
+                echo "Остановка процесса (PID: $PID)..."
+                kill "$PID" 2>/dev/null
+                sleep 2
+                if kill -0 "$PID" 2>/dev/null; then
+                    echo "Принудительная остановка процесса..."
+                    kill -9 "$PID" 2>/dev/null
+                    sleep 1
+                fi
+                if kill -0 "$PID" 2>/dev/null; then
+                    echo "Ошибка: не удалось остановить процесс (PID: $PID)"
+                else
+                    echo "Stubby остановлен (PID: $PID)"
+                fi
+            fi
+        done
+        rm -f "$STUBBY_PID" 2>/dev/null || true
+        return 0
+    fi
+
+    echo "Stubby не запущен"
+    rm -f "$STUBBY_PID" 2>/dev/null || true
+}
+
+restart() {
+    stop
+    sleep 1
+    start
+}
+
+status() {
+    if [ "${2:-}" = "--kv" ] || [ "${2:-}" = "--machine" ] || [ "${1:-}" = "--kv" ] || [ "${1:-}" = "--machine" ]; then
+        status_kv
+        return 0
+    fi
+
+    # Human-readable status (includes mismatch if any)
+    CONFIG_PORT="$(parse_config_port 2>/dev/null || true)"
+    [ -n "${CONFIG_PORT:-}" ] || CONFIG_PORT="$DEFAULT_PORT"
+    PIDS="$(get_running_pids 2>/dev/null || true)"
+    PID_PRIMARY="$(echo "${PIDS:-}" | head -1 | tr -cd '0-9')"
+    pids_count="$(echo "${PIDS:-}" | awk 'NF{c++} END{print c+0}' 2>/dev/null)"
+    if [ -n "${PID_PRIMARY:-}" ]; then
+        ACTIVE_PORT="$(get_active_port "$PID_PRIMARY" 2>/dev/null || true)"
+        echo "Stubby запущен (PID: $PID_PRIMARY)"
+        if [ "${pids_count:-0}" -gt 1 ] 2>/dev/null; then
+            echo "MULTI: yes (найдено несколько процессов: $(echo "${PIDS:-}" | tr '\n' ' ' | sed 's/[[:space:]]*$//'))"
+        else
+            echo "MULTI: no"
+        fi
+        echo "ConfigPort: $CONFIG_PORT"
+        if [ -n "${ACTIVE_PORT:-}" ]; then
+            echo "ActivePort: $ACTIVE_PORT"
+        fi
+        if [ -n "${ACTIVE_PORT:-}" ] && [ "$ACTIVE_PORT" != "$CONFIG_PORT" ]; then
+            echo "MISMATCH: yes (порт в конфиге изменён, требуется restart чтобы применить)"
+        else
+            echo "MISMATCH: no"
+        fi
+        echo "Конфигурация: $STUBBY_CONF"
+        return 0
+    fi
+    echo "Stubby не запущен"
+    echo "ConfigPort: $CONFIG_PORT"
+    echo "Конфигурация: $STUBBY_CONF"
+    return 1
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        restart
+        ;;
+    status)
+        shift || true
+        status "$@"
+        ;;
+    *)
+        echo "Использование: $0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac
+
+exit 0
+
+
+
+

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block title %}Системный монитор - Allow{% endblock %}
+
+{% block content %}
+    {% include 'partials/tab-system-monitor.html' %}
+{% endblock %}
+
+{% block modals %}
+    {% include 'partials/modals-stubby.html' %}
+    {% include 'partials/modals-dnsmasq.html' %}
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='system.js') }}"></script>
+    <script src="{{ url_for('static', filename='stubby.js') }}"></script>
+    <script src="{{ url_for('static', filename='dnsmasq.js') }}"></script>
+{% endblock %}
+
+
+
+

@@ -1,0 +1,1024 @@
+/* iOS стиль карточек */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background: #f5f5f7;
+    color: #1d1d1f;
+    padding: 0;
+    margin: 0;
+}
+
+.main-container {
+    display: flex;
+    min-height: 100vh;
+    max-width: 2000px;
+    margin: 0 auto;
+    width: 100%;
+    padding: 0 5px;
+}
+
+.content-area {
+    flex: 1;
+    padding: 10px;
+    overflow-y: auto;
+    width: 100%;
+    position: relative;
+    min-width: 0;
+}
+
+.content-area > .tab-content {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+}
+
+header {
+    margin-bottom: 30px;
+}
+
+.logo {
+    font-size: 42px;
+    font-weight: 700;
+    margin: 0;
+    display: flex;
+    align-items: baseline;
+    line-height: 1;
+}
+
+.logo-all {
+    color: #007aff;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    background: linear-gradient(135deg, #007aff 0%, #0051d5 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-weight: 800;
+    text-shadow: 0 2px 4px rgba(0, 122, 255, 0.2);
+    position: relative;
+}
+
+.logo-all::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -2px;
+    height: 2px;
+    background: linear-gradient(90deg, #007aff 0%, #0051d5 100%);
+    opacity: 0.3;
+}
+
+.logo-allow {
+    color: #1d1d1f;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 400;
+    font-size: 1em;
+    margin-left: 0;
+    opacity: 0.85;
+}
+
+.cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.card {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    flex-direction: column;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.card-header {
+    padding: 20px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.card-header h2 {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1d1d1f;
+}
+
+.card-content {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+.info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.info-item:last-child {
+    border-bottom: none;
+}
+
+.label {
+    font-weight: 500;
+    color: #6e6e73;
+}
+
+.value {
+    font-weight: 600;
+    color: #1d1d1f;
+}
+
+.status-running {
+    color: #34c759;
+}
+
+.status-stopped {
+    color: #ff3b30;
+}
+
+.status-checking {
+    color: #ff9500;
+}
+
+.card-actions {
+    margin-top: auto;
+    padding-top: 20px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: flex-end;
+}
+
+/* Убираем order для кнопок в группе btn-with-menu, чтобы порядок был естественным */
+.card-actions .btn-with-menu {
+    margin-left: auto;
+}
+
+.card-actions .btn-primary[id$="-start-btn"]:not(.btn-with-menu *),
+.card-actions .btn-danger[id$="-stop-btn"]:not(.btn-with-menu *) {
+    order: 999;
+    margin-left: auto;
+}
+
+/* Группа кнопок с подменю (старт/стоп + ⋮) */
+.btn-with-menu {
+    position: relative;
+    display: inline-flex;
+    align-items: stretch; /* Растягиваем по высоте */
+    gap: 0;
+    flex-direction: row;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: box-shadow 0.2s ease;
+}
+
+.btn-with-menu:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* Основные кнопки (Запустить/Остановить) - всегда слева */
+.btn-with-menu .btn-primary,
+.btn-with-menu .btn-danger {
+    border-top-right-radius: 0 !important;
+    border-bottom-right-radius: 0 !important;
+    border: none;
+    margin: 0;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    order: 1; /* Явно указываем порядок - первая */
+}
+
+/* Кнопка ⋮ - всегда справа, визуально часть основной кнопки */
+.btn-with-menu .btn-icon {
+    padding: 10px 12px;
+    min-width: 40px;
+    text-align: center;
+    margin: 0;
+    margin-left: -1px; /* Убираем зазор между кнопками */
+    display: inline-flex !important; /* Всегда видна */
+    align-items: center;
+    justify-content: center;
+    border-top-left-radius: 0 !important;
+    border-bottom-left-radius: 0 !important;
+    border-top-right-radius: 8px !important;
+    border-bottom-right-radius: 8px !important;
+    border: none;
+    border-left: 1px solid rgba(255, 255, 255, 0.2);
+    transition: all 0.2s ease;
+    font-size: 18px;
+    line-height: 1;
+    flex-shrink: 0;
+    order: 2; /* Явно указываем порядок - вторая (после основной кнопки) */
+}
+
+/* Цветовая интеграция: если видна красная кнопка (Остановить) */
+.btn-with-menu .btn-danger[style*="display: inline-block"] ~ .btn-icon,
+.btn-with-menu .btn-danger:not([style*="display: none"]) ~ .btn-icon {
+    background: #ff3b30 !important;
+    color: rgba(255, 255, 255, 0.95) !important;
+}
+
+.btn-with-menu .btn-danger[style*="display: inline-block"] ~ .btn-icon:hover,
+.btn-with-menu .btn-danger:not([style*="display: none"]) ~ .btn-icon:hover {
+    background: #d70015 !important;
+}
+
+/* Цветовая интеграция: если видна синяя кнопка (Запустить) */
+.btn-with-menu .btn-primary[style*="display: inline-block"] ~ .btn-icon,
+.btn-with-menu .btn-primary:not([style*="display: none"]) ~ .btn-icon {
+    background: #007aff !important;
+    color: rgba(255, 255, 255, 0.95) !important;
+}
+
+.btn-with-menu .btn-primary[style*="display: inline-block"] ~ .btn-icon:hover,
+.btn-with-menu .btn-primary:not([style*="display: none"]) ~ .btn-icon:hover {
+    background: #0051d5 !important;
+}
+
+.btn-dropdown-menu {
+    position: absolute;
+    right: 0;
+    bottom: 100%;
+    margin-bottom: 8px;
+    background: #ffffff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+    z-index: 1000;
+    min-width: 160px;
+    display: none;
+    animation: fadeInDown 0.2s ease;
+}
+
+@keyframes fadeInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.btn-dropdown-menu button {
+    width: 100%;
+    padding: 10px 14px;
+    background: transparent;
+    border: none;
+    text-align: left;
+    font-size: 13px;
+    cursor: pointer;
+    color: #1d1d1f;
+    transition: background-color 0.15s ease;
+}
+
+.btn-dropdown-menu button:hover {
+    background: #f2f2f7;
+}
+
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-primary {
+    background: #007aff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #0051d5;
+}
+
+.btn-secondary {
+    background: #f0f0f0;
+    color: #1d1d1f;
+}
+
+.btn-secondary:hover {
+    background: #e0e0e0;
+}
+
+.btn:active {
+    transform: scale(0.98);
+}
+
+/* Модальное окно */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+    background-color: #ffffff;
+    margin: 5% auto;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+    padding: 20px;
+    border-bottom: 1px solid #f0f0f0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.modal-header h2 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.close {
+    color: #6e6e73;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+    line-height: 20px;
+}
+
+.close:hover {
+    color: #1d1d1f;
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.modal-footer {
+    padding: 20px;
+    border-top: 1px solid #f0f0f0;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+/* Стили для редактора конфигурации */
+.config-editor-modal {
+    max-width: 1200px !important;
+    width: 95% !important;
+    max-height: 90vh !important;
+    display: flex;
+    flex-direction: column;
+}
+
+.config-editor-modal .modal-body {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+}
+
+.config-editor-textarea {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+    font-size: 13px !important;
+    background: #f9f9f9 !important;
+    white-space: pre !important;
+    overflow-wrap: normal !important;
+    overflow-x: auto !important;
+    width: 100% !important;
+    resize: vertical;
+    flex: 1;
+    min-height: 400px;
+    padding: 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    line-height: 1.5;
+    cursor: text !important;
+}
+
+/* Стили для просмотра логов */
+.logs-viewer-modal {
+    max-width: 1200px !important;
+    width: 95% !important;
+    max-height: 90vh !important;
+    display: flex;
+    flex-direction: column;
+}
+
+.logs-viewer-modal .modal-body {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+}
+
+.logs-viewer-textarea {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
+    font-size: 11px !important;
+    background: #f5f5f5 !important;
+    white-space: pre !important;
+    overflow-wrap: normal !important;
+    overflow-x: auto !important;
+    width: 100% !important;
+    resize: none;
+    flex: 1;
+    min-height: 400px;
+    padding: 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    line-height: 1.5;
+    cursor: text !important;
+}
+
+/* Профессиональная форма в стиле pfSense/Proxmox/UniFi */
+.form-group {
+    margin-bottom: 0;
+}
+
+/* Новая структура: label слева, input справа */
+.form-row {
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 10px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.form-row:last-child {
+    border-bottom: none;
+}
+
+.form-row > label {
+    flex: 0 0 200px;
+    text-align: right;
+    padding-right: 20px;
+    font-weight: 500;
+    color: #4a4a4a;
+    font-size: 14px;
+    margin: 0;
+    line-height: 1.4;
+}
+
+.form-row > .form-input,
+.form-row > select.form-input,
+.form-row > textarea.form-input {
+    flex: 1;
+    max-width: 400px;
+    min-width: 0;
+}
+
+.form-input {
+    padding: 8px 12px;
+    border: 1px solid #d2d2d7;
+    border-radius: 4px;
+    font-size: 14px;
+    font-family: inherit;
+    background: #ffffff;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #007aff;
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
+}
+
+.form-input:disabled,
+.form-input[readonly] {
+    background: #f5f5f7;
+    color: #6e6e73;
+    cursor: not-allowed;
+}
+
+/* Toggle switch в форме */
+.form-row > .switch {
+    flex: 0 0 auto;
+    margin-left: 0;
+}
+
+/* Старый стиль для обратной совместимости (если где-то остался) */
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: #1d1d1f;
+}
+
+/* Toggle label для старого стиля */
+.toggle-label {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    width: 100%;
+}
+
+.toggle-label > span:first-child {
+    flex: 0 1 auto;
+    margin-right: auto;
+}
+
+.toggle-label > .switch {
+    flex: 0 0 auto;
+    margin-left: 16px;
+}
+
+.switch {
+    position: relative;
+    display: block;
+    width: 50px;
+    height: 28px;
+    flex-shrink: 0;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #d2d2d7;
+    transition: 0.3s;
+    border-radius: 28px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 20px;
+    width: 20px;
+    left: 4px;
+    bottom: 4px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #34c759;
+}
+
+input:checked + .slider:before {
+    transform: translateX(22px);
+}
+
+/* Всплывающее уведомление */
+.toast {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2000;
+    background-color: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    padding: 20px 30px;
+    min-width: 300px;
+    text-align: center;
+    animation: toastFadeIn 0.3s ease-out;
+}
+
+.toast.show {
+    display: block;
+}
+
+.toast-content {
+    font-size: 16px;
+    font-weight: 500;
+    color: #1d1d1f;
+}
+
+@keyframes toastFadeIn {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, -50%) scale(1);
+    }
+}
+
+.btn-danger {
+    background: #ff3b30;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #d70015;
+}
+
+/* Sidebar */
+.sidebar-menu {
+    width: 300px;
+    background: #ffffff;
+    border-right: 1px solid #e0e0e0;
+    padding: 20px 0;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+.logo-container {
+    padding: 0 20px 30px 20px;
+    border-bottom: 1px solid #f0f0f0;
+    margin-bottom: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.logo {
+    justify-content: center;
+}
+
+.menu-item {
+    padding: 14px 20px;
+    border: none;
+    background: transparent;
+    color: #1d1d1f;
+    font-size: 15px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+    margin: 0;
+    width: 100%;
+    display: block;
+    text-decoration: none;
+}
+
+a.menu-item {
+    color: #1d1d1f;
+    text-decoration: none;
+}
+
+.menu-item:hover {
+    background: #f5f5f7;
+}
+
+.menu-item.active {
+    background: #e8e8e8;
+    border-left-color: #007aff;
+    color: #1d1d1f;
+    font-weight: 600;
+}
+
+.menu-item span {
+    display: block;
+}
+
+/* Help icon для подсказок */
+.help-icon {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+    text-align: center;
+    border-radius: 50%;
+    background: #d2d2d7;
+    color: #ffffff;
+    font-size: 11px;
+    font-weight: bold;
+    margin-left: 6px;
+    cursor: help;
+    vertical-align: middle;
+}
+
+.help-icon:hover {
+    background: #007aff;
+}
+
+/* Мобильная адаптация */
+@media (max-width: 768px) {
+    .main-container {
+        flex-direction: column;
+        padding: 0;
+    }
+    
+    .sidebar-menu {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid #e0e0e0;
+        flex-direction: row;
+        overflow-x: auto;
+        padding: 10px 0;
+    }
+    
+    .logo-container {
+        padding: 0 15px;
+        border-bottom: none;
+        border-right: 1px solid #f0f0f0;
+        margin-bottom: 0;
+        margin-right: 15px;
+    }
+    
+    .logo {
+        font-size: 28px;
+    }
+    
+    .menu-item {
+        padding: 10px 15px;
+        white-space: nowrap;
+        border-left: none;
+        border-bottom: 3px solid transparent;
+    }
+    
+    .menu-item.active {
+        border-left: none;
+        border-bottom-color: #007aff;
+    }
+    
+    .cards-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .modal-content {
+        width: 95%;
+        margin: 10% auto;
+    }
+    
+    .toast {
+        min-width: 250px;
+        padding: 15px 20px;
+    }
+    
+    /* Формы: label над input на мобильных */
+    .form-row {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 15px 0;
+    }
+    
+    .form-row > label {
+        flex: none;
+        text-align: left;
+        padding-right: 0;
+        padding-bottom: 8px;
+        width: 100%;
+    }
+    
+    .form-row > .form-input,
+    .form-row > select.form-input,
+    .form-row > textarea.form-input {
+        max-width: 100%;
+        width: 100%;
+    }
+}
+
+/* Круговой прогресс-бар */
+.progress-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 2000;
+    backdrop-filter: blur(4px);
+}
+
+.progress-overlay-content {
+    background: #ffffff;
+    border-radius: 20px;
+    padding: 40px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+}
+
+.circular-progress {
+    position: relative;
+    width: 120px;
+    height: 120px;
+}
+
+.progress-ring {
+    transform: rotate(-90deg);
+}
+
+.progress-ring-circle {
+    transition: stroke-dashoffset 0.3s ease;
+}
+
+.progress-ring-progress {
+    transition: stroke-dashoffset 0.3s ease;
+    stroke-dasharray: 339.292;
+    stroke-dashoffset: 339.292;
+}
+
+.progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+}
+
+.progress-percent {
+    font-size: 24px;
+    font-weight: 600;
+    color: #1d1d1f;
+    line-height: 1.2;
+}
+
+.progress-message {
+    font-size: 14px;
+    color: #6e6e73;
+    margin-top: 4px;
+    line-height: 1.3;
+}
+
+/* ============================================================================
+   СТИЛИ ДЛЯ МАРШРУТИЗАЦИИ (ROUTING)
+   ============================================================================ */
+
+.routing-container {
+    width: 100%;
+    max-width: 100%;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 40px);
+    min-height: 600px;
+}
+
+.routing-columns {
+    display: flex;
+    gap: 20px;
+    align-items: stretch;
+    flex: 1;
+    min-height: 0;
+}
+
+.routing-column {
+    flex: 1;
+    min-width: 0;
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.column-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.column-header h2 {
+    font-size: 20px;
+    font-weight: 600;
+    color: #1d1d1f;
+    margin: 0;
+}
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 13px;
+}
+
+.blocks-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.routing-block {
+    background: #f9f9f9;
+    border-radius: 12px;
+    padding: 15px;
+    border: 1px solid #e0e0e0;
+    transition: all 0.2s;
+}
+
+.routing-block:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+.routing-block.dragging {
+    opacity: 0.5;
+}
+
+.routing-column.drag-over {
+    background: #f0f7ff;
+    border: 2px dashed #007aff;
+}
+
+.block-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    gap: 10px;
+}
+
+.block-drag-handle {
+    cursor: move;
+    color: #6e6e73;
+    font-size: 18px;
+    line-height: 1;
+    user-select: none;
+    padding: 4px;
+    transition: color 0.2s;
+}
+
+.block-drag-handle:hover {
+    color: #007aff;
+}
+
+.block-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: #1d1d1f;
+    margin: 0;
+    flex: 1;
+}
+
+.block-info {
+    margin-bottom: 12px;
+    color: #6e6e73;
+    font-size: 13px;
+}
+
+.block-items-count {
+    display: inline-block;
+}
+
+.block-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.block-actions .btn {
+    flex: 1;
+}
+
+/* Мобильная адаптация для маршрутизации */
+@media (max-width: 1200px) {
+    .routing-columns {
+        flex-direction: column;
+    }
+    
+    .routing-column {
+        width: 100%;
+    }
+}
+
