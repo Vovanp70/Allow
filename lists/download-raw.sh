@@ -1,10 +1,10 @@
 #!/bin/sh
-# Скачивает RAW-списки из itdoginfo/allow-domains в папку lists/
+# Скачивает RAW-списки из itdoginfo/allow-domains в lists/itdoginfo/
 # Источник: https://github.com/itdoginfo/allow-domains
 
 BASE_URL="https://raw.githubusercontent.com/itdoginfo/allow-domains/refs/heads/main"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-LISTS_DIR="${SCRIPT_DIR}"
+LISTS_DIR="${SCRIPT_DIR}/itdoginfo"
 mkdir -p "$LISTS_DIR"
 
 # URL -> локальный файл
