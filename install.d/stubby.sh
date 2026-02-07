@@ -16,12 +16,18 @@ apply_instance_settings() {
         COMPONENT_SUFFIX="-family"
         DEFAULT_PORT="41501"
         CONFIG_FILE="stubby-family.yml"
-        INIT_SCRIPT_PATTERN="S*stubby-family"
+        INIT_SCRIPT_PATTERN="[SX]*stubby-family"
     else
         COMPONENT_SUFFIX=""
         DEFAULT_PORT="41500"
         CONFIG_FILE="stubby.yml"
-        INIT_SCRIPT_PATTERN="S*stubby"
+        INIT_SCRIPT_PATTERN="[SX]*stubby"
+    fi
+    # Для удаления: убираем S* и X* (без семейного суффикса в имени основного скрипта)
+    if [ "$INSTANCE" = "family" ]; then
+        INIT_SCRIPT_NAMES="S97stubby-family X97stubby-family"
+    else
+        INIT_SCRIPT_NAMES="S97stubby X97stubby"
     fi
 }
 
@@ -357,35 +363,24 @@ install_stubby() {
     detect_opkg_local
     log "Использую opkg: ${OPKG_BIN}"
 
-    # Обновляем список пакетов перед установкой (если нужно устанавливать пакет)
-    # Проверяем наличие системного stubby
-    SYSTEM_STUBBY="/usr/sbin/stubby"
-    HAS_SYSTEM_STUBBY=0
-    if [ -x "$SYSTEM_STUBBY" ]; then
-        HAS_SYSTEM_STUBBY=1
-        log "Обнаружен системный stubby: ${SYSTEM_STUBBY}"
-    fi
-
-    # Если системного stubby нет, проверяем/устанавливаем пакет
-    if [ "$HAS_SYSTEM_STUBBY" -eq 0 ]; then
-        PKG_NAME="stubby"
-        if "$OPKG_BIN" list-installed 2>/dev/null | grep -q "^${PKG_NAME} "; then
-            log "Пакет ${PKG_NAME} уже установлен, пропускаю установку пакета."
+    # Всегда используем stubby из opkg (актуальная версия, напр. 0.4.3-2).
+    # Системный /usr/sbin/stubby (часто 0.4.0) не используем — обрезан и старая версия.
+    PKG_NAME="stubby"
+    if "$OPKG_BIN" list-installed 2>/dev/null | grep -q "^${PKG_NAME} "; then
+        log "Пакет ${PKG_NAME} уже установлен, пропускаю установку пакета."
+    else
+        log "Обновляю список пакетов opkg..."
+        if "$OPKG_BIN" update >>"$LOG_FILE" 2>&1; then
+            log "Список пакетов обновлен."
         else
-            # Обновляем список пакетов перед установкой
-            log "Обновляю список пакетов opkg..."
-            if "$OPKG_BIN" update >>"$LOG_FILE" 2>&1; then
-                log "Список пакетов обновлен."
-            else
-                log "Предупреждение: не удалось обновить список пакетов (продолжаем установку)."
-            fi
-            log "Устанавливаю пакет ${PKG_NAME}..."
-            if "$OPKG_BIN" install "${PKG_NAME}" >>"$LOG_FILE" 2>&1; then
-                log_success "Пакет ${PKG_NAME} успешно установлен."
-            else
-                log_error "Ошибка: не удалось установить пакет ${PKG_NAME}."
-                exit 1
-            fi
+            log "Предупреждение: не удалось обновить список пакетов (продолжаем установку)."
+        fi
+        log "Устанавливаю пакет ${PKG_NAME} (opkg)..."
+        if "$OPKG_BIN" install "${PKG_NAME}" >>"$LOG_FILE" 2>&1; then
+            log_success "Пакет ${PKG_NAME} успешно установлен."
+        else
+            log_error "Ошибка: не удалось установить пакет ${PKG_NAME}."
+            exit 1
         fi
     fi
 
@@ -445,17 +440,17 @@ install_stubby() {
         }
         
         log "Копирую init-скрипты из ${NEED_DIR}/init.d в ${ALLOW_INITD_DIR}."
-        # Копируем только нужный init-скрипт
+        # Копируем как X* (неактивные); активация через autostart.sh
         if [ "$INSTANCE" = "family" ]; then
-            if [ -f "${NEED_DIR}/init.d/S97stubby-family" ]; then
-                cp -f "${NEED_DIR}/init.d/S97stubby-family" "$ALLOW_INITD_DIR"/ 2>>"$LOG_FILE" || {
-                    log_error "Ошибка: не удалось скопировать init-скрипт S97stubby-family."
+            if [ -f "${NEED_DIR}/init.d/X97stubby-family" ]; then
+                cp -f "${NEED_DIR}/init.d/X97stubby-family" "$ALLOW_INITD_DIR"/ 2>>"$LOG_FILE" || {
+                    log_error "Ошибка: не удалось скопировать init-скрипт X97stubby-family."
                     exit 1
                 }
-                chmod +x "${ALLOW_INITD_DIR}/S97stubby-family" 2>/dev/null || true
-                sed -i 's/\r$//' "${ALLOW_INITD_DIR}/S97stubby-family" 2>/dev/null || true
+                chmod +x "${ALLOW_INITD_DIR}/X97stubby-family" 2>/dev/null || true
+                sed -i 's/\r$//' "${ALLOW_INITD_DIR}/X97stubby-family" 2>/dev/null || true
             else
-                log_error "Ошибка: init-скрипт S97stubby-family не найден в ${NEED_DIR}/init.d/"
+                log_error "Ошибка: init-скрипт X97stubby-family не найден в ${NEED_DIR}/init.d/"
                 exit 1
             fi
         else
@@ -463,13 +458,21 @@ install_stubby() {
                 log_error "Ошибка: не удалось скопировать init-скрипты."
                 exit 1
             }
-            chmod +x "${ALLOW_INITD_DIR}"/S*"$COMPONENT"* 2>/dev/null || true
+            chmod +x "${ALLOW_INITD_DIR}"/X*"$COMPONENT"* 2>/dev/null || true
             # Нормализуем окончания строк (CRLF -> LF)
-            for s in "${ALLOW_INITD_DIR}"/S*"$COMPONENT"*; do
+            for s in "${ALLOW_INITD_DIR}"/X*"$COMPONENT"*; do
                 if [ -f "$s" ]; then
                     sed -i 's/\r$//' "$s" 2>/dev/null || true
                 fi
             done
+        fi
+        # Активируем компонент (X -> S)
+        if [ -x "/opt/etc/allow/manage.d/keenetic-entware/autostart.sh" ]; then
+            if [ "$INSTANCE" = "family" ]; then
+                /opt/etc/allow/manage.d/keenetic-entware/autostart.sh stubby-family activate >>"$LOG_FILE" 2>&1 || true
+            else
+                /opt/etc/allow/manage.d/keenetic-entware/autostart.sh stubby activate >>"$LOG_FILE" 2>&1 || true
+            fi
         fi
     else
         log_error "Ошибка: директория ${NEED_DIR}/init.d не найдена, init-скрипты не будут скопированы."
@@ -576,7 +579,7 @@ install_stubby() {
         COMPONENT_SUFFIX="-family"
         DEFAULT_PORT="41501"
         CONFIG_FILE="stubby-family.yml"
-        INIT_SCRIPT_PATTERN="S*stubby-family"
+        INIT_SCRIPT_PATTERN="[SX]*stubby-family"
         
         # Вызываем установку семейного экземпляра
         if install_stubby; then
@@ -644,12 +647,9 @@ uninstall_stubby() {
 
     log "=== ДЕИНСТАЛЛЯЦИЯ ${COMPONENT}${COMPONENT_SUFFIX} ==="
 
-    # Проверка состояния установки (если не FORCE)
-    if [ "${FORCE:-0}" != "1" ]; then
-        if ! state_has "installed.${COMPONENT}${COMPONENT_SUFFIX}"; then
-            log "Компонент ${COMPONENT}${COMPONENT_SUFFIX} не установлен (файл состояния не найден), пропускаю деинсталляцию."
-            return 0
-        fi
+    # При откате после неудачной установки state может быть ещё не записан — всё равно выполняем очистку.
+    if [ "${FORCE:-0}" != "1" ] && ! state_has "installed.${COMPONENT}${COMPONENT_SUFFIX}"; then
+        log "Файл состояния не найден (откат или компонент не устанавливался через этот скрипт), выполняю очистку."
     fi
 
     detect_opkg_local
@@ -660,22 +660,17 @@ uninstall_stubby() {
     # Ждем немного, чтобы процесс успел остановиться
     sleep 2
 
-    # Удаляем пакет только если мы его устанавливали (не системный)
-    SYSTEM_STUBBY="/usr/sbin/stubby"
-    if [ ! -x "$SYSTEM_STUBBY" ]; then
-        PKG_NAME="stubby"
-        if "$OPKG_BIN" list-installed 2>/dev/null | grep -q "^${PKG_NAME} "; then
-            log "Удаляю пакет ${PKG_NAME}..."
-            if "$OPKG_BIN" remove "${PKG_NAME}" >>"$LOG_FILE" 2>&1; then
-                log_success "Пакет ${PKG_NAME} удалён."
-            else
-                log_error "Ошибка: не удалось удалить пакет ${PKG_NAME}."
-            fi
+    # Удаляем пакет stubby из opkg (мы всегда используем именно его при установке)
+    PKG_NAME="stubby"
+    if "$OPKG_BIN" list-installed 2>/dev/null | grep -q "^${PKG_NAME} "; then
+        log "Удаляю пакет ${PKG_NAME}..."
+        if "$OPKG_BIN" remove "${PKG_NAME}" >>"$LOG_FILE" 2>&1; then
+            log_success "Пакет ${PKG_NAME} удалён."
         else
-            log "Пакет ${PKG_NAME} не установлен, пропускаю удаление пакета."
+            log_error "Ошибка: не удалось удалить пакет ${PKG_NAME}."
         fi
     else
-        log "Системный stubby обнаружен, пакет не удаляется."
+        log "Пакет ${PKG_NAME} не установлен, пропускаю удаление пакета."
     fi
 
     # Удаляем конфиги (только для семейного экземпляра удаляем только его конфиг)
@@ -691,25 +686,25 @@ uninstall_stubby() {
         fi
     fi
 
-    # Удаляем init-скрипты из ALLOW_INITD_DIR
+    # Удаляем init-скрипты из ALLOW_INITD_DIR (S и X)
     FOUND_INIT=0
-    for s in "$ALLOW_INITD_DIR"/$INIT_SCRIPT_PATTERN; do
-        if [ -f "$s" ]; then
-            FOUND_INIT=1
-            log "Удаляю init-скрипт ${s}."
-            rm -f "$s"
-        fi
-    done
-    # Также проверяем старую директорию на случай миграции
-    for s in "$INITD_DIR"/$INIT_SCRIPT_PATTERN; do
-        if [ -f "$s" ]; then
-            FOUND_INIT=1
-            log "Удаляю init-скрипт ${s} (старая директория)."
-            rm -f "$s"
-        fi
+    for name in $INIT_SCRIPT_NAMES; do
+        for dir in "$ALLOW_INITD_DIR" "$INITD_DIR"; do
+            s="${dir}/${name}"
+            if [ -f "$s" ]; then
+                FOUND_INIT=1
+                if [ -x "$s" ]; then
+                    log "Останавливаю и удаляю init-скрипт ${s}."
+                    sh "$s" stop >>"$LOG_FILE" 2>&1 || true
+                else
+                    log "Удаляю init-скрипт ${s}."
+                fi
+                rm -f "$s"
+            fi
+        done
     done
     if [ "$FOUND_INIT" -eq 0 ]; then
-        log "Init-скрипты stubby${COMPONENT_SUFFIX} в ${INITD_DIR} не найдены или уже удалены."
+        log "Init-скрипты stubby${COMPONENT_SUFFIX} в ${ALLOW_INITD_DIR} не найдены или уже удалены."
     fi
 
     # Удаляем отметку состояния

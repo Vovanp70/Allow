@@ -5,7 +5,7 @@
 #
 # Важно:
 # - Мы не используем системный logrotate (его может не быть).
-# - Используем собственный скрипт /opt/etc/allow/bin/allow-logrotate.sh, запускаемый cron'ом.
+# - Используем собственный скрипт /opt/etc/allow/manage.d/keenetic-entware/allow-logrotate.sh, запускаемый cron'ом.
 #
 
 set -e
@@ -17,11 +17,32 @@ LOG_DIR="/opt/var/log/allow/${COMPONENT}"
 LOG_FILE="${LOG_DIR}/${COMPONENT}.log"
 STATE_KEY_INSTALLED="installed.${COMPONENT}"
 
-TARGET_DIR="/opt/etc/allow/bin"
+TARGET_DIR="/opt/etc/allow/manage.d/keenetic-entware"
 TARGET_SCRIPT="${TARGET_DIR}/allow-logrotate.sh"
 
 # По умолчанию каждые 10 минут (ротация по размеру)
 CRON_EXPR="${ALLOW_LOGROTATE_CRON_EXPR:-*/10 * * * *}"
+
+# Диспетчеризация: logrotate.sh <component> logging <start|stop|status>
+COMP_ARG="${1:-}"
+SUB_ARG="${2:-}"
+CMD_ARG="${3:-}"
+case "$COMP_ARG" in
+    dnsmasq-full|dnsmasq-family|stubby|stubby-family|sing-box)
+        if [ "$SUB_ARG" = "logging" ]; then
+            case "$CMD_ARG" in
+                start|stop|status)
+                    if [ -x "${TARGET_DIR}/allow-logging.sh" ]; then
+                        exec "${TARGET_DIR}/allow-logging.sh" "$COMP_ARG" "$CMD_ARG"
+                    else
+                        echo "Сначала выполните: $0 install" >&2
+                        exit 1
+                    fi
+                    ;;
+            esac
+        fi
+        ;;
+esac
 
 # Подключаем единое хранилище состояния
 LIB_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
@@ -185,13 +206,15 @@ install_logrotate() {
     log "=== УСТАНОВКА ${COMPONENT} ==="
     log "Платформа: ${PLATFORM}"
 
-    # Скрипт лежит в resources/allow/bin (см. план)
+    # Скрипт лежит в resources/allow/manage.d/keenetic-entware
     NEED_DIR="${NEED_DIR:-/opt/tmp/allow/resources/allow}"
-    SRC_SCRIPT="${NEED_DIR}/bin/allow-logrotate.sh"
+    SRC_SCRIPT="${NEED_DIR}/manage.d/keenetic-entware/allow-logrotate.sh"
+    SRC_LOGGING="${NEED_DIR}/manage.d/keenetic-entware/allow-logging.sh"
+    TARGET_LOGGING="${TARGET_DIR}/allow-logging.sh"
 
     if [ ! -f "$SRC_SCRIPT" ]; then
         log_error "Источник скрипта не найден: $SRC_SCRIPT"
-        log_error "Проверьте, что папка allow скопирована на роутер и содержит resources/allow/bin/allow-logrotate.sh"
+        log_error "Проверьте, что папка allow скопирована на роутер и содержит resources/allow/manage.d/keenetic-entware/allow-logrotate.sh"
         exit 1
     fi
 
@@ -202,6 +225,16 @@ install_logrotate() {
     }
     chmod +x "$TARGET_SCRIPT" 2>/dev/null || true
     sed -i 's/\r$//' "$TARGET_SCRIPT" 2>/dev/null || true
+
+    if [ -f "$SRC_LOGGING" ]; then
+        log "Копирую скрипт управления логированием в ${TARGET_LOGGING}..."
+        cp -f "$SRC_LOGGING" "$TARGET_LOGGING" 2>>"$LOG_FILE" || {
+            log_error "Не удалось скопировать: $SRC_LOGGING -> $TARGET_LOGGING"
+            exit 1
+        }
+        chmod +x "$TARGET_LOGGING" 2>/dev/null || true
+        sed -i 's/\r$//' "$TARGET_LOGGING" 2>/dev/null || true
+    fi
 
     log "Добавляю cron-задачу: ${CRON_EXPR} ..."
     cron_add_entry || {
@@ -226,6 +259,11 @@ uninstall_logrotate() {
     if [ -f "$TARGET_SCRIPT" ]; then
         log "Удаляю скрипт: $TARGET_SCRIPT"
         rm -f "$TARGET_SCRIPT" 2>/dev/null || true
+    fi
+
+    if [ -f "${TARGET_DIR}/allow-logging.sh" ]; then
+        log "Удаляю скрипт управления логированием: ${TARGET_DIR}/allow-logging.sh"
+        rm -f "${TARGET_DIR}/allow-logging.sh" 2>/dev/null || true
     fi
 
     # Если директория /opt/etc/allow/bin пуста — удаляем её

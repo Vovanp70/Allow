@@ -61,8 +61,11 @@ ndmc_cmd() {
 }
 
 read_dnsmasq_port() {
-  DNSMASQ_INIT="/opt/etc/allow/init.d/S98dnsmasq-full"
-  [ -x "$DNSMASQ_INIT" ] || DNSMASQ_INIT="/opt/etc/init.d/S98dnsmasq-full"
+  DNSMASQ_INIT=""
+  for n in S98dnsmasq-full X98dnsmasq-full; do
+    if [ -x "/opt/etc/allow/init.d/${n}" ]; then DNSMASQ_INIT="/opt/etc/allow/init.d/${n}"; break; fi
+    if [ -x "/opt/etc/init.d/${n}" ]; then DNSMASQ_INIT="/opt/etc/init.d/${n}"; break; fi
+  done
 
   # Policy 1: берём EFFECTIVE_PORT (active если running, иначе config)
   if [ -x "$DNSMASQ_INIT" ]; then

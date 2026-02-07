@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}DNSMASQ full - Allow{% endblock %}
+{% block title %}Dnsmasq-full - Allow{% endblock %}
 
 {% block content %}
     <div class="card">
         <div class="card-header">
-            <h2>DNSMASQ full</h2>
+            <h2>Dnsmasq-full</h2>
         </div>
         <div class="card-content" id="dnsmasq-full-info">
             <div class="info-item">
@@ -18,11 +18,12 @@
             </div>
             <div class="card-actions">
                 <button class="btn btn-secondary" id="dnsmasq-full-restart-btn" onclick="restartDnsmasq()">Перезапустить</button>
+                <button class="btn btn-secondary" id="dnsmasq-full-toggle-autostart-btn" onclick="toggleDnsmasqAutostart()">…</button>
             </div>
         </div>
     </div>
 
-    <!-- Форма конфигурации DNSMASQ full -->
+    <!-- Форма конфигурации Dnsmasq-full -->
     <div class="card" style="margin-top: 20px;">
         <div class="card-header">
             <h2>Настройки</h2>

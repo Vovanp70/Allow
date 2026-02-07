@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Маршрутизация - Allow</title>
+    <link rel="stylesheet" href="/static/style.css">
+    
+</head>
+<body>
+    <div class="main-container">
+        <!-- Боковое меню слева -->
+        <div class="sidebar-menu">
+    <div class="logo-container">
+        <h1 class="logo">
+            <span class="logo-all">All</span><span class="logo-allow">ow</span>
+        </h1>
+    </div>
+    <a href="/dashboard.html" class="menu-item ">
+        <span>Системный монитор</span>
+    </a>
+    <a href="/settings.html" class="menu-item ">
+        <span>Настройки</span>
+    </a>
+    <a href="/routing.html" class="menu-item active">
+        <span>Маршрутизация</span>
+    </a>
+    <details class="menu-group" >
+        <summary class="menu-item menu-group-summary">
+            <span>Расширенные настройки</span>
+        </summary>
+        <div class="menu-sublist">
+            <a href="/dnsmasq.html" class="menu-item menu-subitem ">
+                <span>Dnsmasq-full</span>
+            </a>
+            <a href="/dnsmasq-family.html" class="menu-item menu-subitem ">
+                <span>Dnsmasq-full family</span>
+            </a>
+            <a href="/stubby.html" class="menu-item menu-subitem ">
+                <span>Stubby</span>
+            </a>
+            <a href="/stubby-family.html" class="menu-item menu-subitem ">
+                <span>Stubby-family</span>
+            </a>
+            <a href="/sing-box.html" class="menu-item menu-subitem ">
+                <span>Sing-box</span>
+            </a>
+        </div>
+    </details>
+</div>
+
+
+        <!-- Область контента -->
+        <div class="content-area">
+            
+<div class="routing-container">
+    <div class="routing-header" style="margin-bottom: 20px; display: flex; justify-content: flex-end; align-items: center;">
+        <button id="save-routing-changes-btn" class="btn btn-primary" onclick="saveAllRoutingChanges()" style="display: none;">
+            Сохранить изменения
+        </button>
+    </div>
+    <div class="routing-columns">
+        <!-- Колонка 1: Напрямую -->
+        <div class="routing-column" id="direct-column">
+            <div class="column-header">
+                <h2>Напрямую</h2>
+                <button class="btn btn-primary btn-sm" onclick="addBlock('direct')">+ Добавить блок</button>
+            </div>
+            <div class="blocks-container" id="direct-blocks">
+                <!-- Блоки будут загружены через JS -->
+            </div>
+        </div>
+
+        <!-- Колонка 2: Встроенные инструменты обхода -->
+        <div class="routing-column" id="bypass-column">
+            <div class="column-header">
+                <h2>Встроенные инструменты обхода</h2>
+                <button class="btn btn-primary btn-sm" onclick="addBlock('bypass')">+ Добавить блок</button>
+            </div>
+            <div class="blocks-container" id="bypass-blocks">
+                <!-- Блоки будут загружены через JS -->
+            </div>
+        </div>
+
+        <!-- Колонка 3: VPN -->
+        <div class="routing-column" id="vpn-column">
+            <div class="column-header">
+                <h2>VPN</h2>
+                <button class="btn btn-primary btn-sm" onclick="addBlock('vpn')">+ Добавить блок</button>
+            </div>
+            <div class="blocks-container" id="vpn-blocks">
+                <!-- Блоки будут загружены через JS -->
+            </div>
+        </div>
+    </div>
+</div>
+
+        </div>
+    </div>
+
+    
+    <!-- Переиспользуемое модальное окно редактора конфигурации -->
+<div id="configEditorModal" class="modal">
+    <div class="modal-content config-editor-modal">
+        <div class="modal-header">
+            <h2 id="configEditorTitle">Редактор конфигурации</h2>
+            <span class="close" onclick="closeConfigEditor()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label>Файл:</label>
+                <span id="configEditorFilePath" style="font-family: monospace; color: #6e6e73; font-size: 13px;"></span>
+            </div>
+            <div class="form-group">
+                <textarea id="configEditorText" rows="35" class="form-input config-editor-textarea"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeConfigEditor()">Отмена</button>
+            <button class="btn btn-primary" onclick="saveConfigEditor()">Сохранить</button>
+        </div>
+    </div>
+</div>
+
+
+
+    <!-- Переиспользуемые компоненты -->
+    <!-- Переиспользуемое модальное окно редактора конфигурации -->
+<div id="configEditorModal" class="modal">
+    <div class="modal-content config-editor-modal">
+        <div class="modal-header">
+            <h2 id="configEditorTitle">Редактор конфигурации</h2>
+            <span class="close" onclick="closeConfigEditor()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="form-group" style="margin-bottom: 15px;">
+                <label>Файл:</label>
+                <span id="configEditorFilePath" style="font-family: monospace; color: #6e6e73; font-size: 13px;"></span>
+            </div>
+            <div class="form-group">
+                <textarea id="configEditorText" rows="35" class="form-input config-editor-textarea"></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeConfigEditor()">Отмена</button>
+            <button class="btn btn-primary" onclick="saveConfigEditor()">Сохранить</button>
+        </div>
+    </div>
+</div>
+
+    <!-- Переиспользуемое модальное окно просмотра логов -->
+<div id="logsViewerModal" class="modal">
+    <div class="modal-content logs-viewer-modal">
+        <div class="modal-header">
+            <h2 id="logsViewerTitle">Логи</h2>
+            <span class="close" onclick="closeLogsViewer()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <div class="form-group" style="margin-bottom: 15px; display: flex; align-items: center; gap: 10px;">
+                <label style="margin: 0;">Количество строк:</label>
+                <input type="number" id="logsViewerLines" value="100" min="10" max="1000" class="form-input" style="width: 100px;">
+                <button class="btn btn-secondary" onclick="loadLogsViewer()">Обновить</button>
+                <span id="logsViewerWarning" style="color: #ff9500; font-size: 13px; margin-left: auto;"></span>
+            </div>
+            <div class="form-group" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                <textarea id="logsViewerText" rows="35" class="form-input logs-viewer-textarea" readonly></textarea>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" onclick="closeLogsViewer()">Закрыть</button>
+        </div>
+    </div>
+</div>
+
+    <!-- Переиспользуемое модальное окно подтверждения -->
+<div id="confirmModal" class="modal">
+    <div class="modal-content" style="max-width: 500px;">
+        <div class="modal-header">
+            <h2 id="confirmModalTitle">Подтверждение</h2>
+            <span class="close" onclick="closeConfirmModal()">&times;</span>
+        </div>
+        <div class="modal-body">
+            <p id="confirmModalMessage"></p>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" id="confirmModalCancelBtn" onclick="closeConfirmModal()">Отмена</button>
+            <button class="btn btn-danger" id="confirmModalOkBtn" onclick="confirmModalAction()">Подтвердить</button>
+        </div>
+    </div>
+</div>
+
+
+
+
+    <!-- Переиспользуемый оверлей с круговым прогресс-баром -->
+<div id="progressOverlay" class="progress-overlay" style="display: none;">
+    <div class="progress-overlay-content">
+        <div class="circular-progress">
+            <svg class="progress-ring" width="120" height="120">
+                <circle class="progress-ring-circle" cx="60" cy="60" r="54" fill="transparent" stroke="#e0e0e0" stroke-width="8"/>
+                <circle class="progress-ring-progress" cx="60" cy="60" r="54" fill="transparent" stroke="#007aff" stroke-width="8" stroke-linecap="round"/>
+            </svg>
+            <div class="progress-text">
+                <div class="progress-percent">0%</div>
+                <div class="progress-message" id="progressMessage">Обработка...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+
+
+
+    <!-- Всплывающее уведомление -->
+    <div id="toast" class="toast">
+        <div class="toast-content">
+            <span id="toast-message"></span>
+        </div>
+    </div>
+
+    <!-- Подключение общих JS -->
+    <script src="/static/api-core.js"></script>
+    <script src="/static/config-editor.js"></script>
+    <script src="/static/logs-viewer.js"></script>
+    <script src="/static/confirm-modal.js"></script>
+    <script src="/static/progress-overlay.js"></script>
+    
+    <script src="/static/routing.js"></script>
+
+</body>
+</html>

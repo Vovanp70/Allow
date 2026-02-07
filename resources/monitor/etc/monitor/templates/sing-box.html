@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block title %}Sing-box - Allow{% endblock %}
+
+{% block content %}
+    <div class="card">
+        <div class="card-header">
+            <h2>Sing-box</h2>
+        </div>
+        <div class="card-content" id="singbox-page-info">
+            <div class="info-item">
+                <span class="label">Статус:</span>
+                <span class="value" id="singbox-status">Проверка...</span>
+            </div>
+            <div class="info-item">
+                <span class="label">PID:</span>
+                <span class="value" id="singbox-pid">-</span>
+            </div>
+            <div class="card-actions">
+                <button class="btn btn-secondary" id="singbox-restart-btn" onclick="restartSingbox()">Перезапустить</button>
+                <button class="btn btn-secondary" id="singbox-toggle-autostart-btn" onclick="toggleSingboxAutostart()">…</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top: 20px;">
+        <div class="card-header">
+            <h2>Логирование</h2>
+        </div>
+        <div class="card-content">
+            <div class="form-row">
+                <label for="singbox-logging">Логирование</label>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <label class="switch" for="singbox-logging">
+                        <input type="checkbox" id="singbox-logging" name="singbox-logging">
+                        <span class="slider"></span>
+                    </label>
+                    <button class="btn btn-secondary" type="button" onclick="openSingboxLogs()" style="padding: 6px 12px; font-size: 13px;">Логи</button>
+                    <button class="btn btn-secondary" type="button" id="singbox-clear-logs-btn" onclick="clearSingboxLogs()" style="padding: 6px 12px; font-size: 13px;">Очистить</button>
+                </div>
+            </div>
+            <div class="card-actions" style="margin-top: 10px;">
+                <button class="btn btn-secondary" type="button" onclick="openSingboxConfigEditor()">Изменить конфигурацию вручную</button>
+                <button class="btn btn-primary" type="button" onclick="saveSingboxLogging()">Сохранить</button>
+            </div>
+        </div>
+    </div>
+
+{% endblock %}
+
+{% block scripts %}
+    <script src="{{ url_for('static', filename='sing-box.js') }}"></script>
+{% endblock %}

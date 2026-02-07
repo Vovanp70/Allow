@@ -14,13 +14,15 @@ if [ "$INSTANCE" = "family" ]; then
     COMPONENT_SUFFIX="-family"
     DEFAULT_PORT="5301"
     CONFIG_FILE="dnsmasq-family.conf"
-    INIT_SCRIPT_PATTERN="S*dnsmasq-family"
+    INIT_SCRIPT_PATTERN="[SX]*dnsmasq-family"
+    INIT_SCRIPT_NAMES="S98dnsmasq-family X98dnsmasq-family"
     STATE_FILE_SUFFIX="-family"
 else
     COMPONENT_SUFFIX=""
     DEFAULT_PORT="5300"
     CONFIG_FILE="dnsmasq.conf"
-    INIT_SCRIPT_PATTERN="S*dnsmasq-full"
+    INIT_SCRIPT_PATTERN="[SX]*dnsmasq-full"
+    INIT_SCRIPT_NAMES="S98dnsmasq-full X98dnsmasq-full"
     STATE_FILE_SUFFIX=""
 fi
 
@@ -270,20 +272,18 @@ stop_dnsmasq_full() {
         done
     fi
     
-    # Если все еще не найден, пробуем найти по имени файла напрямую
+    # Если все еще не найден, пробуем найти по имени файла напрямую (S или X)
     if [ -z "$SCRIPT_PATH" ]; then
         if [ "$INSTANCE" = "family" ]; then
-            if [ -f "${ALLOW_INITD_DIR}/S98dnsmasq-family" ]; then
-                SCRIPT_PATH="${ALLOW_INITD_DIR}/S98dnsmasq-family"
-            elif [ -f "${INITD_DIR}/S98dnsmasq-family" ]; then
-                SCRIPT_PATH="${INITD_DIR}/S98dnsmasq-family"
-            fi
+            for n in S98dnsmasq-family X98dnsmasq-family; do
+                if [ -f "${ALLOW_INITD_DIR}/${n}" ]; then SCRIPT_PATH="${ALLOW_INITD_DIR}/${n}"; break; fi
+                if [ -f "${INITD_DIR}/${n}" ]; then SCRIPT_PATH="${INITD_DIR}/${n}"; break; fi
+            done
         else
-            if [ -f "${ALLOW_INITD_DIR}/S98dnsmasq-full" ]; then
-                SCRIPT_PATH="${ALLOW_INITD_DIR}/S98dnsmasq-full"
-            elif [ -f "${INITD_DIR}/S98dnsmasq-full" ]; then
-                SCRIPT_PATH="${INITD_DIR}/S98dnsmasq-full"
-            fi
+            for n in S98dnsmasq-full X98dnsmasq-full; do
+                if [ -f "${ALLOW_INITD_DIR}/${n}" ]; then SCRIPT_PATH="${ALLOW_INITD_DIR}/${n}"; break; fi
+                if [ -f "${INITD_DIR}/${n}" ]; then SCRIPT_PATH="${INITD_DIR}/${n}"; break; fi
+            done
         fi
     fi
 
@@ -420,74 +420,11 @@ install_dnsmasq_full() {
         STUBBY_PORT="$STUBBY_DEFAULT_PORT"
     fi
 
-    # Копируем hosts-файлы в ipsets директорию (только при установке основного экземпляра:
-    # ipsets общая для main и family, при install-family файлы уже на месте)
-    IPSETS_DIR="${CONF_DIR}/ipsets"
-    mkdir -p "$IPSETS_DIR" 2>/dev/null || true
-    
     # Проверяем наличие исходной директории
     if [ ! -d "${NEED_DIR}" ]; then
         log_error "Ошибка: директория ${NEED_DIR} не найдена."
         log_error "Убедитесь, что папка allow скопирована на роутер в /opt/allow/"
         exit 1
-    fi
-    
-    if [ "$INSTANCE" = "main" ]; then
-        log "Копирую hosts-файлы из ${NEED_DIR}/ipsets в ${IPSETS_DIR}."
-        
-        # Список обязательных файлов для копирования
-        REQUIRED_FILES="nonbypass.txt bypass.txt zapret.txt"
-        
-        # Проверяем наличие файлов перед копированием
-        HOSTS_FILES_FOUND=0
-        for filename in $REQUIRED_FILES; do
-            if [ -f "${NEED_DIR}/ipsets/${filename}" ]; then
-                HOSTS_FILES_FOUND=$((HOSTS_FILES_FOUND + 1))
-            fi
-        done
-        
-        if [ "$HOSTS_FILES_FOUND" -eq 0 ]; then
-            log_error "Ошибка: hosts-файлы не найдены в ${NEED_DIR}/ipsets."
-            log_error "Проверьте, что файлы nonbypass.txt, bypass.txt, zapret.txt находятся в ${NEED_DIR}/ipsets/"
-            exit 1
-        fi
-        
-        log "Найдено hosts-файлов: $HOSTS_FILES_FOUND"
-        
-        # Копируем файлы
-        HOSTS_COUNT=0
-        for filename in $REQUIRED_FILES; do
-            hosts_file="${NEED_DIR}/ipsets/${filename}"
-            if [ -f "$hosts_file" ]; then
-                HOSTS_COUNT=$((HOSTS_COUNT + 1))
-                log "Копирую $filename..."
-                if cp -f "$hosts_file" "$IPSETS_DIR"/ 2>>"$LOG_FILE"; then
-                    log_success "Файл $filename скопирован."
-                else
-                    log_error "Ошибка: не удалось скопировать hosts-файл: $hosts_file"
-                    exit 1
-                fi
-            else
-                log "Предупреждение: файл $filename не найден, пропускаю."
-            fi
-        done
-        
-        if [ "$HOSTS_COUNT" -eq 0 ]; then
-            log_error "Ошибка: не удалось скопировать ни одного hosts-файла."
-            exit 1
-        else
-            log_success "Скопировано hosts-файлов: $HOSTS_COUNT"
-        fi
-    else
-        # family: ipsets уже заполнена при установке main, только проверяем наличие
-        REQUIRED_FILES="nonbypass.txt bypass.txt zapret.txt"
-        for filename in $REQUIRED_FILES; do
-            if [ ! -f "${IPSETS_DIR}/${filename}" ]; then
-                log_error "Ошибка: hosts-файл ${filename} не найден в ${IPSETS_DIR}. Сначала установите основной экземпляр (install)."
-                exit 1
-            fi
-        done
-        log "hosts-файлы в ${IPSETS_DIR} на месте, пропускаю копирование."
     fi
 
     # Копируем process-hosts.sh
@@ -514,6 +451,29 @@ install_dnsmasq_full() {
         sed -i 's/\r$//' "${CONF_DIR}/pre-resolve-hosts.sh" 2>/dev/null || true
     fi
 
+    # Копируем sync-allow-lists.sh
+    if [ -f "${NEED_DIR}/sync-allow-lists.sh" ]; then
+        log "Копирую sync-allow-lists.sh в ${CONF_DIR}."
+        cp -f "${NEED_DIR}/sync-allow-lists.sh" "$CONF_DIR"/ 2>>"$LOG_FILE" || {
+            log_error "Ошибка: не удалось скопировать sync-allow-lists.sh."
+            exit 1
+        }
+        chmod +x "${CONF_DIR}/sync-allow-lists.sh" 2>/dev/null || true
+        sed -i 's/\r$//' "${CONF_DIR}/sync-allow-lists.sh" 2>/dev/null || true
+
+        # Запускаем sync-allow-lists.sh только при установке main (для family списки уже синхронизированы)
+        if [ "$INSTANCE" = "main" ]; then
+            log "Запускаю sync-allow-lists.sh для загрузки списков..."
+            if sh "${CONF_DIR}/sync-allow-lists.sh" >>"$LOG_FILE" 2>&1; then
+                log_success "Списки синхронизированы."
+            else
+                log "sync-allow-lists.sh завершился с ошибкой (например, нет сети), продолжаю установку."
+            fi
+        else
+            log "Экземпляр family: sync-allow-lists.sh уже выполнен при установке main, пропускаю."
+        fi
+    fi
+
     # Создаем ipset'ы перед запуском dnsmasq
     log "Создаю ipset'ы для hosts-файлов..."
     for ipset_name in nonbypass bypass; do
@@ -530,16 +490,7 @@ install_dnsmasq_full() {
         fi
     done
 
-    # Запускаем process-hosts.sh для генерации конфигурации
-    if [ -f "${CONF_DIR}/process-hosts.sh" ]; then
-        log "Генерирую конфигурацию ipset для dnsmasq..."
-        if sh "${CONF_DIR}/process-hosts.sh" >>"$LOG_FILE" 2>&1; then
-            log_success "Конфигурация ipset сгенерирована."
-        else
-            log_error "Ошибка: не удалось сгенерировать конфигурацию ipset."
-            exit 1
-        fi
-    fi
+    # process-hosts.sh вызывается из sync-allow-lists.sh после успешной синхронизации списков
 
     # Копируем конфиги и init-скрипты из NEED_DIR, если они есть
     if [ -d "${NEED_DIR}/etc" ]; then
@@ -590,17 +541,17 @@ install_dnsmasq_full() {
         }
         
         log "Копирую init-скрипты из ${NEED_DIR}/init.d в ${ALLOW_INITD_DIR}."
-        # Для семейного экземпляра копируем только нужный скрипт
+        # Копируем как X* (неактивные); активация через autostart.sh
         if [ "$INSTANCE" = "family" ]; then
-            if [ -f "${NEED_DIR}/init.d/S98dnsmasq-family" ]; then
-                cp -f "${NEED_DIR}/init.d/S98dnsmasq-family" "$ALLOW_INITD_DIR"/ 2>>"$LOG_FILE" || {
-                    log_error "Ошибка: не удалось скопировать init-скрипт S98dnsmasq-family."
+            if [ -f "${NEED_DIR}/init.d/X98dnsmasq-family" ]; then
+                cp -f "${NEED_DIR}/init.d/X98dnsmasq-family" "$ALLOW_INITD_DIR"/ 2>>"$LOG_FILE" || {
+                    log_error "Ошибка: не удалось скопировать init-скрипт X98dnsmasq-family."
                     exit 1
                 }
-                chmod +x "${ALLOW_INITD_DIR}/S98dnsmasq-family" 2>/dev/null || true
-                sed -i 's/\r$//' "${ALLOW_INITD_DIR}/S98dnsmasq-family" 2>/dev/null || true
+                chmod +x "${ALLOW_INITD_DIR}/X98dnsmasq-family" 2>/dev/null || true
+                sed -i 's/\r$//' "${ALLOW_INITD_DIR}/X98dnsmasq-family" 2>/dev/null || true
             else
-                log_error "Ошибка: init-скрипт S98dnsmasq-family не найден в ${NEED_DIR}/init.d/"
+                log_error "Ошибка: init-скрипт X98dnsmasq-family не найден в ${NEED_DIR}/init.d/"
                 exit 1
             fi
         else
@@ -608,52 +559,25 @@ install_dnsmasq_full() {
                 log_error "Ошибка: не удалось скопировать init-скрипты."
                 exit 1
             }
-            chmod +x "${ALLOW_INITD_DIR}"/S*"$COMPONENT"* 2>/dev/null || true
+            chmod +x "${ALLOW_INITD_DIR}"/X*"$COMPONENT"* 2>/dev/null || true
 
             # На всякий случай нормализуем окончания строк (CRLF -> LF), если скрипт редактировался в Windows
-            for s in "${ALLOW_INITD_DIR}"/S*"$COMPONENT"*; do
+            for s in "${ALLOW_INITD_DIR}"/X*"$COMPONENT"*; do
                 if [ -f "$s" ]; then
                     sed -i 's/\r$//' "$s" 2>/dev/null || true
                 fi
             done
+        fi
+        # Активируем компонент (X -> S)
+        if [ -x "/opt/etc/allow/manage.d/keenetic-entware/autostart.sh" ]; then
+            if [ "$INSTANCE" = "family" ]; then
+                /opt/etc/allow/manage.d/keenetic-entware/autostart.sh dnsmasq-full-family activate >>"$LOG_FILE" 2>&1 || true
+            else
+                /opt/etc/allow/manage.d/keenetic-entware/autostart.sh dnsmasq-full activate >>"$LOG_FILE" 2>&1 || true
+            fi
         fi
     else
         log "Предупреждение: директория ${NEED_DIR}/init.d не найдена, init-скрипты не будут скопированы."
-    fi
-
-    # Копируем ndm netfilter хуки (если есть)
-    if [ -d "${NEED_DIR}/netfilter.d" ]; then
-        # Проверяем, есть ли файлы для копирования
-        if ls "${NEED_DIR}/netfilter.d/"* >/dev/null 2>&1; then
-            log "Копирую ndm netfilter хуки из ${NEED_DIR}/netfilter.d в ${NDM_DIR}."
-            mkdir -p "$NDM_DIR" 2>/dev/null || true
-            cp -f "${NEED_DIR}/netfilter.d/"* "$NDM_DIR"/ 2>>"$LOG_FILE" || {
-                log_error "Ошибка: не удалось скопировать ndm netfilter хуки."
-                exit 1
-            }
-            chmod +x "${NDM_DIR}/"* 2>/dev/null || true
-            for s in "${NDM_DIR}/"*; do
-                if [ -f "$s" ]; then
-                    sed -i 's/\r$//' "$s" 2>/dev/null || true
-                fi
-            done
-            
-            # Запускаем хуки после копирования (чтобы правила iptables применились)
-            log "Запускаю ndm netfilter хуки..."
-            for hook in "${NDM_DIR}/"*.sh; do
-                if [ -f "$hook" ] && [ -x "$hook" ]; then
-                    HOOK_NAME=$(basename "$hook")
-                    log "Запускаю хук ${HOOK_NAME}..."
-                    sh "$hook" restart >>"$LOG_FILE" 2>&1 || {
-                        log "Предупреждение: хук ${HOOK_NAME} завершился с ошибкой (продолжаем)."
-                    }
-                fi
-            done
-        else
-            log "Директория ${NEED_DIR}/netfilter.d пуста, хуки ndm не будут скопированы."
-        fi
-    else
-        log "Предупреждение: директория ${NEED_DIR}/netfilter.d не найдена, хуки ndm не будут скопированы."
     fi
 
     # Если S01allow установлен, используем его для запуска и проверки
@@ -845,7 +769,7 @@ install_dnsmasq_full() {
         COMPONENT_SUFFIX="-family"
         DEFAULT_PORT="5301"
         CONFIG_FILE="dnsmasq-family.conf"
-        INIT_SCRIPT_PATTERN="S*dnsmasq-family"
+        INIT_SCRIPT_PATTERN="[SX]*dnsmasq-family"
         STATE_FILE_SUFFIX="-family"
         STATE_KEY_INSTALLED="installed.${COMPONENT}${STATE_FILE_SUFFIX}"
         STATE_KEY_PKGS="managed_pkgs.${COMPONENT}${STATE_FILE_SUFFIX}"
@@ -918,12 +842,14 @@ uninstall_dnsmasq_full() {
     if [ "$INSTANCE" = "family" ]; then
         COMPONENT_SUFFIX="-family"
         CONFIG_FILE="dnsmasq-family.conf"
-        INIT_SCRIPT_PATTERN="S*dnsmasq-family"
+        INIT_SCRIPT_PATTERN="[SX]*dnsmasq-family"
+        INIT_SCRIPT_NAMES="S98dnsmasq-family X98dnsmasq-family"
         STATE_FILE_SUFFIX="-family"
     else
         COMPONENT_SUFFIX=""
         CONFIG_FILE="dnsmasq.conf"
-        INIT_SCRIPT_PATTERN="S*dnsmasq-full"
+        INIT_SCRIPT_PATTERN="[SX]*dnsmasq-full"
+        INIT_SCRIPT_NAMES="S98dnsmasq-full X98dnsmasq-full"
         STATE_FILE_SUFFIX=""
     fi
 
@@ -1000,22 +926,22 @@ uninstall_dnsmasq_full() {
         fi
     fi
 
-    # Удаляем init-скрипты из ALLOW_INITD_DIR
+    # Удаляем init-скрипты из ALLOW_INITD_DIR (S и X)
     FOUND_INIT=0
-    for s in "$ALLOW_INITD_DIR"/$INIT_SCRIPT_PATTERN; do
-        if [ -f "$s" ]; then
-            FOUND_INIT=1
-            log "Удаляю init-скрипт ${s}."
-            rm -f "$s"
-        fi
-    done
-    # Также проверяем старую директорию на случай миграции
-    for s in "$INITD_DIR"/$INIT_SCRIPT_PATTERN; do
-        if [ -f "$s" ]; then
-            FOUND_INIT=1
-            log "Удаляю init-скрипт ${s} (старая директория)."
-            rm -f "$s"
-        fi
+    for name in $INIT_SCRIPT_NAMES; do
+        for dir in "$ALLOW_INITD_DIR" "$INITD_DIR"; do
+            s="${dir}/${name}"
+            if [ -f "$s" ]; then
+                FOUND_INIT=1
+                if [ -x "$s" ]; then
+                    log "Останавливаю и удаляю init-скрипт ${s}."
+                    sh "$s" stop >>"$LOG_FILE" 2>&1 || true
+                else
+                    log "Удаляю init-скрипт ${s}."
+                fi
+                rm -f "$s"
+            fi
+        done
     done
     if [ "$FOUND_INIT" -eq 0 ]; then
         log "Init-скрипты dnsmasq-full${COMPONENT_SUFFIX} в ${INITD_DIR} не найдены или уже удалены."

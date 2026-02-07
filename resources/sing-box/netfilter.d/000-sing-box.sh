@@ -29,11 +29,16 @@ case "${1:-}" in
     ;;
 esac
 
-if [ -x /opt/etc/allow/init.d/S98sing-box ]; then
-  /opt/etc/allow/init.d/S98sing-box "$cmd"
+SB_INIT=""
+for n in S98sing-box X98sing-box; do
+  if [ -x "/opt/etc/allow/init.d/${n}" ]; then SB_INIT="/opt/etc/allow/init.d/${n}"; break; fi
+done
+if [ -n "$SB_INIT" ]; then
+  "$SB_INIT" "$cmd" 2>/dev/null || sh "$SB_INIT" "$cmd" 2>/dev/null || true
 else
-  # fallback to sh if not executable yet
-  sh /opt/etc/allow/init.d/S98sing-box "$cmd" 2>/dev/null || true
+  for n in S98sing-box X98sing-box; do
+    if [ -f "/opt/etc/allow/init.d/${n}" ]; then sh "/opt/etc/allow/init.d/${n}" "$cmd" 2>/dev/null || true; break; fi
+  done
 fi
 
 exit 0

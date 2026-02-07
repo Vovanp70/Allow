@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Настройки - Allow{% endblock %}
+
+{% block content %}
+<div class="settings-page">
+    <header class="settings-page-header">
+        <h1>Настройки</h1>
+        <div class="settings-save-bar">
+            <span class="settings-unsaved-hint" id="settings-unsaved-hint"></span>
+            <button type="button" class="btn btn-primary" id="settings-save-btn" disabled>Сохранить</button>
+        </div>
+    </header>
+
+    <section class="settings-section">
+        <h2 class="settings-section-title">Режим работы Stubby (DoT)</h2>
+        <p class="settings-section-desc">Выберите режим DNS через DoT. Изменения применятся после нажатия «Сохранить».</p>
+        <div class="dns-mode-cards">
+            <div class="dns-mode-card" id="mode-adblock" data-mode="adblock" role="button" tabindex="0">
+                <div class="dns-mode-card-header">
+                    <h3>DoT + Блокировка рекламы + Защита от опасных сайтов</h3>
+                </div>
+                <div class="dns-mode-card-body">
+                    <p>AdGuard, Control D и аналогичные серверы с фильтрацией рекламы и вредоносных сайтов.</p>
+                </div>
+            </div>
+            <div class="dns-mode-card" id="mode-stable" data-mode="stable" role="button" tabindex="0">
+                <div class="dns-mode-card-header">
+                    <h3>DoT + Защита от опасных сайтов</h3>
+                </div>
+                <div class="dns-mode-card-body">
+                    <p>Cloudflare, Yandex и другие стабильные DoT-серверы с защитой от опасных сайтов, без блокировки рекламы.</p>
+                </div>
+            </div>
+            <div class="dns-mode-card dns-mode-card-manual" id="mode-manual" data-mode="manual" role="button" tabindex="0">
+                <div class="dns-mode-card-header">
+                    <h3>Ручная настройка (конфиг изменён)</h3>
+                </div>
+                <div class="dns-mode-card-body">
+                    <p>Конфигурация Stubby была изменена вручную. Переключение на adblock или stable применит соответствующий набор серверов.</p>
+                </div>
+            </div>
+        </div>
+        <p class="dns-mode-status settings-section-status" id="dns-mode-status"></p>
+    </section>
+
+    <section class="settings-section">
+        <h2 class="settings-section-title">Фильтрация контента для детей</h2>
+        <p class="settings-section-desc">Stubby-family и Dnsmasq-full family работают вместе для фильтрации контента на детских устройствах. Включение запускает оба компонента и добавляет их в автозапуск.</p>
+        <div class="card settings-card">
+            <div class="card-content settings-card-row">
+                <span class="settings-card-label">Включить фильтрацию</span>
+                <label class="switch" for="children-filter-toggle">
+                    <input type="checkbox" id="children-filter-toggle">
+                    <span class="slider"></span>
+                </label>
+            </div>
+        </div>
+    </section>
+
+    <section class="settings-section">
+        <h2 class="settings-section-title">Sing-box: прокси (outbound'ы)</h2>
+        <p class="settings-section-desc">Список прокси из конфига Sing-box (до 10). Конвертация в ссылки и обратно: <a href="https://github.com/4n0nymou3/proxy-to-singbox-converter" target="_blank" rel="noopener">proxy-to-singbox-converter</a> (MIT). Изменения применятся после нажатия «Сохранить».</p>
+        <div class="card">
+            <div class="card-content">
+                <div id="singbox-proxy-list" class="singbox-proxy-list"></div>
+                <p id="singbox-proxy-list-hint" class="form-hint singbox-proxy-hint"></p>
+                <div class="settings-singbox-import">
+                    <label for="singbox-settings-import-input" class="settings-import-label">Добавить из ссылок</label>
+                    <textarea id="singbox-settings-import-input" class="form-input" rows="4" placeholder="vless://…, vmess://…, trojan://…, ss://…, hy2://… или Base64-подписка"></textarea>
+                    <button type="button" class="btn btn-primary" id="singbox-settings-import-btn" onclick="singboxSettingsAddFromLinks()">Добавить в конфиг</button>
+                    <p id="singbox-settings-import-message" class="form-hint"></p>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='proxy-converter-utils.js') }}"></script>
+<script src="{{ url_for('static', filename='proxy-converter-core.js') }}"></script>
+<script src="{{ url_for('static', filename='proxy-converter-editor.js') }}"></script>
+<script src="{{ url_for('static', filename='singbox-proxies.js') }}"></script>
+<script src="{{ url_for('static', filename='settings.js') }}"></script>
+{% endblock %}

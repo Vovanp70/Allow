@@ -141,8 +141,8 @@ get_sing_box_pids() {
 
 stop_sing_box() {
     SCRIPT_PATH=""
-    # Сначала ищем в новой директории
-    for s in "$ALLOW_INITD_DIR"/S*"$COMPONENT"*; do
+    # Сначала ищем в новой директории (S или X)
+    for s in "$ALLOW_INITD_DIR"/S*"$COMPONENT"* "$ALLOW_INITD_DIR"/X*"$COMPONENT"*; do
         if [ -f "$s" ]; then
             SCRIPT_PATH="$s"
             break
@@ -150,7 +150,7 @@ stop_sing_box() {
     done
     # Если не найден, проверяем старую директорию (для миграции)
     if [ -z "$SCRIPT_PATH" ]; then
-        for s in "$INITD_DIR"/S*"$COMPONENT"*; do
+        for s in "$INITD_DIR"/S*"$COMPONENT"* "$INITD_DIR"/X*"$COMPONENT"*; do
             if [ -f "$s" ]; then
                 SCRIPT_PATH="$s"
                 break
@@ -172,8 +172,8 @@ stop_sing_box() {
 
 start_sing_box() {
     SCRIPT_PATH=""
-    # Сначала ищем в новой директории
-    for s in "$ALLOW_INITD_DIR"/S*"$COMPONENT"*; do
+    # Сначала ищем в новой директории (S или X)
+    for s in "$ALLOW_INITD_DIR"/S*"$COMPONENT"* "$ALLOW_INITD_DIR"/X*"$COMPONENT"*; do
         if [ -f "$s" ]; then
             SCRIPT_PATH="$s"
             break
@@ -181,7 +181,7 @@ start_sing_box() {
     done
     # Если не найден, проверяем старую директорию (для миграции)
     if [ -z "$SCRIPT_PATH" ]; then
-        for s in "$INITD_DIR"/S*"$COMPONENT"*; do
+        for s in "$INITD_DIR"/S*"$COMPONENT"* "$INITD_DIR"/X*"$COMPONENT"*; do
             if [ -f "$s" ]; then
                 SCRIPT_PATH="$s"
                 break
@@ -268,14 +268,18 @@ install_sing_box() {
             log_error "Ошибка: не удалось скопировать init-скрипты."
             exit 1
         }
-        chmod +x "${ALLOW_INITD_DIR}"/S*"$COMPONENT"* 2>/dev/null || true
+        chmod +x "${ALLOW_INITD_DIR}"/X*"$COMPONENT"* 2>/dev/null || true
 
         # Нормализуем окончания строк (CRLF -> LF)
-        for s in "${ALLOW_INITD_DIR}"/S*"$COMPONENT"*; do
+        for s in "${ALLOW_INITD_DIR}"/X*"$COMPONENT"*; do
             if [ -f "$s" ]; then
                 sed -i 's/\r$//' "$s" 2>/dev/null || true
             fi
         done
+        # Активируем компонент (X -> S)
+        if [ -x "/opt/etc/allow/manage.d/keenetic-entware/autostart.sh" ]; then
+            /opt/etc/allow/manage.d/keenetic-entware/autostart.sh sing-box activate >>"$LOG_FILE" 2>&1 || true
+        fi
     else
         log_error "Ошибка: директория ${NEED_DIR}/init.d не найдена, init-скрипты не будут скопированы."
         exit 1
@@ -475,13 +479,15 @@ uninstall_sing_box() {
     # Останавливаем сервис через init-скрипт
     stop_sing_box || true
 
-    # Снимаем firewall-правила (zapret-style), если init-скрипт доступен
-    if [ -x "${ALLOW_INITD_DIR}/S98sing-box" ]; then
-        log "Снимаю firewall правила через ${ALLOW_INITD_DIR}/S98sing-box stop-fw."
-        sh "${ALLOW_INITD_DIR}/S98sing-box" stop-fw >>"$LOG_FILE" 2>&1 || true
-    elif [ -x "${INITD_DIR}/S98sing-box" ]; then
-        log "Снимаю firewall правила через ${INITD_DIR}/S98sing-box stop-fw (старая директория)."
-        sh "${INITD_DIR}/S98sing-box" stop-fw >>"$LOG_FILE" 2>&1 || true
+    # Снимаем firewall-правила (zapret-style), если init-скрипт доступен (S или X)
+    SB_INIT=""
+    for n in S98sing-box X98sing-box; do
+        if [ -x "${ALLOW_INITD_DIR}/${n}" ]; then SB_INIT="${ALLOW_INITD_DIR}/${n}"; break; fi
+        if [ -x "${INITD_DIR}/${n}" ]; then SB_INIT="${INITD_DIR}/${n}"; break; fi
+    done
+    if [ -n "$SB_INIT" ]; then
+        log "Снимаю firewall правила через $SB_INIT stop-fw."
+        sh "$SB_INIT" stop-fw >>"$LOG_FILE" 2>&1 || true
     fi
 
     # Удаляем TUN интерфейс, если он существует
@@ -530,20 +536,30 @@ uninstall_sing_box() {
         rm -rf "$CONF_DIR"
     fi
 
-    # Удаляем init-скрипты из ALLOW_INITD_DIR
+    # Удаляем init-скрипты из ALLOW_INITD_DIR (S и X)
     FOUND_INIT=0
-    for s in "$ALLOW_INITD_DIR"/S*"$COMPONENT"* "$ALLOW_INITD_DIR"/K*"$COMPONENT"*; do
+    for s in "$ALLOW_INITD_DIR"/S*"$COMPONENT"* "$ALLOW_INITD_DIR"/X*"$COMPONENT"* "$ALLOW_INITD_DIR"/K*"$COMPONENT"*; do
         if [ -f "$s" ]; then
             FOUND_INIT=1
-            log "Удаляю init-скрипт ${s}."
+            if [ -x "$s" ]; then
+                log "Останавливаю и удаляю init-скрипт ${s}."
+                sh "$s" stop >>"$LOG_FILE" 2>&1 || true
+            else
+                log "Удаляю init-скрипт ${s}."
+            fi
             rm -f "$s"
         fi
     done
     # Также проверяем старую директорию на случай миграции
-    for s in "$INITD_DIR"/S*"$COMPONENT"* "$INITD_DIR"/K*"$COMPONENT"*; do
+    for s in "$INITD_DIR"/S*"$COMPONENT"* "$INITD_DIR"/X*"$COMPONENT"* "$INITD_DIR"/K*"$COMPONENT"*; do
         if [ -f "$s" ]; then
             FOUND_INIT=1
-            log "Удаляю init-скрипт ${s} (старая директория)."
+            if [ -x "$s" ]; then
+                log "Останавливаю и удаляю init-скрипт ${s} (старая директория)."
+                sh "$s" stop >>"$LOG_FILE" 2>&1 || true
+            else
+                log "Удаляю init-скрипт ${s} (старая директория)."
+            fi
             rm -f "$s"
         fi
     done

@@ -17,9 +17,31 @@
                 <span class="value" id="stubby-port">-</span>
             </div>
             <div class="card-actions">
-                <button class="btn btn-primary" id="stubby-start-btn" onclick="startStubby()" style="display: none;">Запустить</button>
-                <button class="btn btn-danger" id="stubby-stop-btn" onclick="stopStubby()" style="display: none;">Остановить</button>
-                <button class="btn btn-secondary" onclick="openStubbyConfigModal()">Конфигурация</button>
+                <button class="btn btn-secondary" id="stubby-restart-btn" onclick="restartStubby()">Перезапустить</button>
+                <button class="btn btn-secondary" id="stubby-toggle-autostart-btn" onclick="toggleStubbyAutostart()">…</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top: 20px;">
+        <div class="card-header">
+            <h2>Логирование</h2>
+        </div>
+        <div class="card-content">
+            <div class="form-row">
+                <label for="stubby-logging">Логирование</label>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <label class="switch" for="stubby-logging">
+                        <input type="checkbox" id="stubby-logging" name="stubby-logging">
+                        <span class="slider"></span>
+                    </label>
+                    <button class="btn btn-secondary" type="button" onclick="openStubbyLogs()" style="padding: 6px 12px; font-size: 13px;">Логи</button>
+                    <button class="btn btn-secondary" type="button" id="stubby-clear-logs-btn" onclick="clearStubbyLogs()" style="padding: 6px 12px; font-size: 13px;">Очистить</button>
+                </div>
+            </div>
+            <div class="card-actions">
+                <button class="btn btn-secondary" type="button" onclick="openStubbyConfigModal()">Изменить конфигурацию вручную</button>
+                <button class="btn btn-primary" type="button" onclick="saveStubbyLogging()">Сохранить</button>
             </div>
         </div>
     </div>

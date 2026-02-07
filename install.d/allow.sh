@@ -10,6 +10,7 @@ PLATFORM="${2:-entware}"
 
 INITD_DIR="/opt/etc/init.d"
 ALLOW_INITD_DIR="/opt/etc/allow/init.d"
+ALLOW_MANAGED_PLATFORM_DIR="/opt/etc/allow/manage.d/keenetic-entware"
 # NEED_DIR может быть передан через переменную окружения, иначе используем значение по умолчанию
 NEED_DIR="${NEED_DIR:-/opt/tmp/allow/resources/${COMPONENT}}"
 STATE_KEY_INSTALLED="installed.${COMPONENT}"
@@ -85,7 +86,22 @@ install_allow() {
         log_error "Ошибка: файл ${NEED_DIR}/init.d/S01allow не найден"
         exit 1
     fi
-    
+
+    # Копируем скрипты управления (manage.d/keenetic-entware)
+    if [ -d "${NEED_DIR}/manage.d/keenetic-entware" ]; then
+        log "Копирую manage.d/keenetic-entware в ${ALLOW_MANAGED_PLATFORM_DIR}..."
+        mkdir -p "$ALLOW_MANAGED_PLATFORM_DIR" 2>/dev/null || true
+        for f in "${NEED_DIR}/manage.d/keenetic-entware"/*; do
+            if [ -f "$f" ]; then
+                name="$(basename "$f")"
+                cp -f "$f" "${ALLOW_MANAGED_PLATFORM_DIR}/${name}" 2>>"$LOG_FILE" || true
+                chmod +x "${ALLOW_MANAGED_PLATFORM_DIR}/${name}" 2>/dev/null || true
+                sed -i 's/\r$//' "${ALLOW_MANAGED_PLATFORM_DIR}/${name}" 2>/dev/null || true
+                log "Установлен: manage.d/keenetic-entware/${name}"
+            fi
+        done
+    fi
+
     log "=== УСТАНОВКА завершена ==="
 }
 
@@ -141,7 +157,21 @@ uninstall_allow() {
             rmdir "$ALLOW_INITD_DIR" 2>/dev/null || true
         fi
     fi
-    
+
+    # Удаляем manage.d/keenetic-entware и родительский manage.d
+    if [ -d "$ALLOW_MANAGED_PLATFORM_DIR" ]; then
+        log "Удаление ${ALLOW_MANAGED_PLATFORM_DIR}..."
+        rm -rf "$ALLOW_MANAGED_PLATFORM_DIR" 2>/dev/null || true
+    fi
+    if [ -d "/opt/etc/allow/manage.d" ]; then
+        rm -rf /opt/etc/allow/manage.d 2>/dev/null || true
+    fi
+
+    # Удаляем файл режима DNS (dns_mode), создаваемый монитором
+    if [ -f "/opt/etc/allow/dns_mode" ]; then
+        rm -f /opt/etc/allow/dns_mode 2>/dev/null || true
+    fi
+
     # Удаляем отметку состояния
     state_unset "$STATE_KEY_INSTALLED"
     

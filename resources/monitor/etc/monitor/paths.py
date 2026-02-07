@@ -62,11 +62,23 @@ def _read_port_file(path: str, default: int) -> int:
 def _prefer_allow_init(name: str) -> str:
     """
     На роутере компоненты часто ставятся в /opt/etc/allow/init.d/.
-    Если файл там есть — используем его, иначе fallback на /opt/etc/init.d/.
+    Поддерживаются активные (S??*) и неактивные (X??*) имена.
+    Сначала allow/init.d, затем init.d; в каждой — сначала S, затем X.
     """
-    allow_path = f'{ETC_DIR}/allow/init.d/{name}'
-    if os.path.exists(allow_path):
-        return allow_path
+    # S97stubby -> X97stubby
+    alt_name = ('X' + name[1:]) if name.startswith('S') and len(name) > 1 else None
+    for n in (name, alt_name):
+        if n is None:
+            continue
+        allow_path = f'{ETC_DIR}/allow/init.d/{n}'
+        if os.path.exists(allow_path):
+            return allow_path
+    for n in (name, alt_name):
+        if n is None:
+            continue
+        init_path = f'{INIT_DIR}/{n}'
+        if os.path.exists(init_path):
+            return init_path
     return f'{INIT_DIR}/{name}'
 
 # ============================================================================
@@ -84,6 +96,12 @@ STUBBY_PID_FILE = f'{VAR_RUN_DIR}/stubby.pid'
 STUBBY_FAMILY_INIT_SCRIPT = _prefer_allow_init('S97stubby-family')
 STUBBY_FAMILY_CONFIG_FILE = f'{ETC_DIR}/allow/stubby/stubby-family.yml'
 STUBBY_FAMILY_PID_FILE = f'{VAR_RUN_DIR}/stubby-family.pid'
+
+# Файл состояния режима DNS (adblock | stable)
+DNS_MODE_FILE = f'{CONFIG_DIR}/dns_mode'
+
+# Скрипт управления режимом DNS (manage.d/keenetic-entware)
+DNS_MODE_SCRIPT = f'{ETC_DIR}/allow/manage.d/keenetic-entware/dns-mode.sh'
 
 # ============================================================================
 # ПУТИ КОМПОНЕНТОВ: DNSMASQ

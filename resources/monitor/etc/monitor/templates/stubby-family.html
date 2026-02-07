@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Stubby Family - Allow{% endblock %}
+{% block title %}Stubby-family - Allow{% endblock %}
 
 {% block content %}
     <div class="card">
         <div class="card-header">
-            <h2>Stubby Family</h2>
+            <h2>Stubby-family</h2>
         </div>
         <div class="card-content" id="stubby-family-page-info">
             <div class="info-item">
@@ -17,9 +17,31 @@
                 <span class="value" id="stubby-family-port">-</span>
             </div>
             <div class="card-actions">
-                <button class="btn btn-primary" id="stubby-family-start-btn" onclick="startStubbyFamily()" style="display: none;">Запустить</button>
-                <button class="btn btn-danger" id="stubby-family-stop-btn" onclick="stopStubbyFamily()" style="display: none;">Остановить</button>
-                <button class="btn btn-secondary" onclick="openStubbyFamilyConfigModal()">Конфигурация</button>
+                <button class="btn btn-secondary" id="stubby-family-restart-btn" onclick="restartStubbyFamily()">Перезапустить</button>
+                <button class="btn btn-secondary" id="stubby-family-toggle-autostart-btn" onclick="toggleStubbyFamilyAutostart()">…</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="margin-top: 20px;">
+        <div class="card-header">
+            <h2>Логирование</h2>
+        </div>
+        <div class="card-content">
+            <div class="form-row">
+                <label for="stubby-family-logging">Логирование</label>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <label class="switch" for="stubby-family-logging">
+                        <input type="checkbox" id="stubby-family-logging" name="stubby-family-logging">
+                        <span class="slider"></span>
+                    </label>
+                    <button class="btn btn-secondary" type="button" onclick="openStubbyFamilyLogs()" style="padding: 6px 12px; font-size: 13px;">Логи</button>
+                    <button class="btn btn-secondary" type="button" id="stubby-family-clear-logs-btn" onclick="clearStubbyFamilyLogs()" style="padding: 6px 12px; font-size: 13px;">Очистить</button>
+                </div>
+            </div>
+            <div class="card-actions">
+                <button class="btn btn-secondary" type="button" onclick="openStubbyFamilyConfigModal()">Изменить конфигурацию вручную</button>
+                <button class="btn btn-primary" type="button" onclick="saveStubbyFamilyLogging()">Сохранить</button>
             </div>
         </div>
     </div>

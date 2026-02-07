@@ -7,20 +7,33 @@
     <a href="{{ url_for('dashboard') }}" class="menu-item {% if request.endpoint == 'dashboard' %}active{% endif %}">
         <span>Системный монитор</span>
     </a>
-    <a href="{{ url_for('stubby_page') }}" class="menu-item {% if request.endpoint == 'stubby_page' %}active{% endif %}">
-        <span>Stubby</span>
-    </a>
-    <a href="{{ url_for('stubby_family_page') }}" class="menu-item {% if request.endpoint == 'stubby_family_page' %}active{% endif %}">
-        <span>Stubby Family</span>
-    </a>
-    <a href="{{ url_for('dnsmasq_page') }}" class="menu-item {% if request.endpoint == 'dnsmasq_page' %}active{% endif %}">
-        <span>DNSMASQ full</span>
-    </a>
-    <a href="{{ url_for('dnsmasq_family_page') }}" class="menu-item {% if request.endpoint == 'dnsmasq_family_page' %}active{% endif %}">
-        <span>DNSMASQ Family</span>
+    <a href="{{ url_for('settings_page') }}" class="menu-item {% if request.endpoint == 'settings_page' %}active{% endif %}">
+        <span>Настройки</span>
     </a>
     <a href="{{ url_for('routing_page') }}" class="menu-item {% if request.endpoint == 'routing_page' %}active{% endif %}">
         <span>Маршрутизация</span>
     </a>
+    <details class="menu-group" {% if request.endpoint in ['dnsmasq_page', 'dnsmasq_family_page', 'stubby_page', 'stubby_family_page', 'sing_box_page'] %}open{% endif %}>
+        <summary class="menu-item menu-group-summary">
+            <span>Расширенные настройки</span>
+        </summary>
+        <div class="menu-sublist">
+            <a href="{{ url_for('dnsmasq_page') }}" class="menu-item menu-subitem {% if request.endpoint == 'dnsmasq_page' %}active{% endif %}">
+                <span>Dnsmasq-full</span>
+            </a>
+            <a href="{{ url_for('dnsmasq_family_page') }}" class="menu-item menu-subitem {% if request.endpoint == 'dnsmasq_family_page' %}active{% endif %}">
+                <span>Dnsmasq-full family</span>
+            </a>
+            <a href="{{ url_for('stubby_page') }}" class="menu-item menu-subitem {% if request.endpoint == 'stubby_page' %}active{% endif %}">
+                <span>Stubby</span>
+            </a>
+            <a href="{{ url_for('stubby_family_page') }}" class="menu-item menu-subitem {% if request.endpoint == 'stubby_family_page' %}active{% endif %}">
+                <span>Stubby-family</span>
+            </a>
+            <a href="{{ url_for('sing_box_page') }}" class="menu-item menu-subitem {% if request.endpoint == 'sing_box_page' %}active{% endif %}">
+                <span>Sing-box</span>
+            </a>
+        </div>
+    </details>
 </div>
 

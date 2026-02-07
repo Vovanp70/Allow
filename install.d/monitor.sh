@@ -1,6 +1,6 @@
 #!/bin/sh
 
-# Управление компонентом monitor (Flask UI)
+# Управление компонентом monitor (lighttpd + CGI, без Flask)
 # Размещение: /opt/tmp/allow/install.d/monitor.sh
 
 set -e
@@ -54,60 +54,65 @@ detect_opkg() {
     exit 1
 }
 
-ensure_python() {
+ensure_deps() {
     detect_opkg
-    NEED_PKGS="python3 python3-pip"
-    for p in $NEED_PKGS; do
-        if ! "$OPKG_BIN" list-installed 2>/dev/null | grep -q "^${p} "; then
-            log "Устанавливаю пакет ${p}..."
+    # Без Python: только lighttpd для CGI
+    if ! command -v lighttpd >/dev/null 2>&1 && ! [ -x /usr/sbin/lighttpd ]; then
+        log "Предупреждение: lighttpd не найден. Установите lighttpd для работы монитора."
+        if ! "$OPKG_BIN" list-installed 2>/dev/null | grep -q "^lighttpd "; then
+            log "Пытаюсь установить lighttpd..."
             "$OPKG_BIN" update >>"$LOG_FILE" 2>&1 || true
-            "$OPKG_BIN" install "$p" >>"$LOG_FILE" 2>&1
+            "$OPKG_BIN" install lighttpd >>"$LOG_FILE" 2>&1 || true
         fi
-    done
-
-    # Устанавливаем Flask через pip (пакета python3-flask может не быть)
-    if command -v /opt/bin/pip3 >/dev/null 2>&1; then
-        PIP_BIN="/opt/bin/pip3"
-    elif command -v pip3 >/dev/null 2>&1; then
-        PIP_BIN="pip3"
-    else
-        log "Ошибка: pip3 не найден после установки python3-pip."
-        exit 1
     fi
-
-    # Устанавливаем переменные окружения для работы pip из временной директории
-    # Используем постоянную директорию для временных файлов pip
-    mkdir -p /opt/tmp /opt/var/tmp
-    export TMPDIR="/opt/tmp"
-    export TEMP="/opt/tmp"
-    export TMP="/opt/tmp"
-    
-    # Переходим в постоянную директорию перед запуском pip
-    ORIG_PWD="$PWD"
-    cd /opt/tmp || cd /tmp || true
-
-    log "Устанавливаю Flask через pip..."
-    if ! env TMPDIR=/opt/tmp TEMP=/opt/tmp TMP=/opt/tmp "$PIP_BIN" install --no-cache-dir --no-warn-script-location --upgrade pip >>"$LOG_FILE" 2>&1; then
-        log "Предупреждение: не удалось обновить pip (продолжаем)."
+    # mod_cgi нужен для api.cgi; на Keenetic системный lighttpd без модулей — используем из Entware
+    if ! "$OPKG_BIN" list-installed 2>/dev/null | grep -q "lighttpd-mod-cgi"; then
+        log "Устанавливаю lighttpd-mod-cgi для CGI..."
+        "$OPKG_BIN" update >>"$LOG_FILE" 2>&1 || true
+        "$OPKG_BIN" install lighttpd-mod-cgi >>"$LOG_FILE" 2>&1 || true
     fi
-    if ! env TMPDIR=/opt/tmp TEMP=/opt/tmp TMP=/opt/tmp "$PIP_BIN" install --no-cache-dir --no-warn-script-location Flask >>"$LOG_FILE" 2>&1; then
-        log "Ошибка: не удалось установить Flask через pip."
-        cd "$ORIG_PWD" 2>/dev/null || true
-        exit 1
+    # mod_rewrite нужен для /api/* -> cgi-bin/api.cgi с PATH_INFO
+    if ! "$OPKG_BIN" list-installed 2>/dev/null | grep -q "lighttpd-mod-rewrite"; then
+        log "Устанавливаю lighttpd-mod-rewrite для /api/* rewrite..."
+        "$OPKG_BIN" update >>"$LOG_FILE" 2>&1 || true
+        "$OPKG_BIN" install lighttpd-mod-rewrite >>"$LOG_FILE" 2>&1 || true
     fi
-    
-    # Возвращаемся в исходную директорию
-    cd "$ORIG_PWD" 2>/dev/null || true
+    # jq нужен для редактора конфигов (config.cgi)
+    if ! command -v jq >/dev/null 2>&1 && ! "$OPKG_BIN" list-installed 2>/dev/null | grep -q "^jq "; then
+        log "Устанавливаю jq для редактора конфигов..."
+        "$OPKG_BIN" update >>"$LOG_FILE" 2>&1 || true
+        "$OPKG_BIN" install jq >>"$LOG_FILE" 2>&1 || true
+    fi
 }
 
 install_monitor() {
     log "=== УСТАНОВКА ${COMPONENT} ==="
-    ensure_python
+    ensure_deps
 
-    log "Копирую приложение в ${APP_DIR}..."
+    log "Копирую приложение в ${APP_DIR} (shell CGI, без Python)..."
     rm -rf "$APP_DIR"
-    mkdir -p "$APP_DIR"
-    cp -R "${NEED_DIR}/etc/monitor/." "$APP_DIR"/
+    mkdir -p "$APP_DIR" "$APP_DIR/cgi-bin"
+    # lighttpd.conf и cgi-bin (api.cgi + config.cgi для редактора конфигов)
+    [ -f "${NEED_DIR}/etc/monitor/lighttpd.conf" ] && cp -f "${NEED_DIR}/etc/monitor/lighttpd.conf" "$APP_DIR/"
+    [ -f "${NEED_DIR}/etc/monitor/cgi-bin/api.cgi" ] && cp -f "${NEED_DIR}/etc/monitor/cgi-bin/api.cgi" "$APP_DIR/cgi-bin/"
+    [ -f "${NEED_DIR}/etc/monitor/cgi-bin/config.cgi" ] && cp -f "${NEED_DIR}/etc/monitor/cgi-bin/config.cgi" "$APP_DIR/cgi-bin/"
+    # Статика (HTML + static/) из static_htdocs
+    if [ -d "${NEED_DIR}/static_htdocs" ]; then
+        cp -R "${NEED_DIR}/static_htdocs/"* "$APP_DIR/"
+    fi
+    chmod +x "$APP_DIR/cgi-bin/api.cgi" 2>/dev/null || true
+    chmod +x "$APP_DIR/cgi-bin/config.cgi" 2>/dev/null || true
+    [ -f "$APP_DIR/cgi-bin/api.cgi" ] && sed -i 's/\r$//' "$APP_DIR/cgi-bin/api.cgi" 2>/dev/null || true
+    [ -f "$APP_DIR/cgi-bin/config.cgi" ] && sed -i 's/\r$//' "$APP_DIR/cgi-bin/config.cgi" 2>/dev/null || true
+    # manage.d скрипты (system-info.sh, stubby.sh, dns-mode.sh) для api.cgi
+    MANAGED_SRC="${NEED_DIR}/../allow/manage.d"
+    if [ -d "$MANAGED_SRC" ]; then
+        mkdir -p "/opt/etc/allow"
+        cp -R "$MANAGED_SRC" "/opt/etc/allow/" 2>/dev/null || true
+        for f in /opt/etc/allow/manage.d/keenetic-entware/*.sh; do
+            [ -f "$f" ] && chmod +x "$f" 2>/dev/null || true
+        done
+    fi
 
     # Создаем директорию для скриптов компонентов
     mkdir -p "$ALLOW_INITD_DIR" 2>/dev/null || {
@@ -116,12 +121,18 @@ install_monitor() {
     }
     
     log "Копирую init-скрипт в ${ALLOW_INITD_DIR}..."
-    cp -f "${NEED_DIR}/init.d/S99monitor" "${ALLOW_INITD_DIR}/S99monitor" 2>>"$LOG_FILE" || {
-        log_error "Ошибка: не удалось скопировать init-скрипт"
+    cp -f "${NEED_DIR}/init.d/X99monitor" "${ALLOW_INITD_DIR}/X99monitor" 2>>"$LOG_FILE" || {
+        log_error "Ошибка: не удалось скопировать init-скрипт X99monitor"
         exit 1
     }
-    chmod +x "${ALLOW_INITD_DIR}/S99monitor" 2>/dev/null || true
-    sed -i 's/\r$//' "${ALLOW_INITD_DIR}/S99monitor" 2>/dev/null || true
+    chmod +x "${ALLOW_INITD_DIR}/X99monitor" 2>/dev/null || true
+    sed -i 's/\r$//' "${ALLOW_INITD_DIR}/X99monitor" 2>/dev/null || true
+
+    # Активируем компонент (X -> S), чтобы S01allow его подхватил
+    if [ -x "/opt/etc/allow/manage.d/keenetic-entware/autostart.sh" ]; then
+        log "Активирую компонент через autostart.sh..."
+        /opt/etc/allow/manage.d/keenetic-entware/autostart.sh monitor activate >>"$LOG_FILE" 2>&1 || true
+    fi
 
     # Если S01allow установлен, используем его для запуска и проверки
     if [ -x "${INITD_DIR}/S01allow" ]; then
@@ -146,7 +157,9 @@ install_monitor() {
     else
         # Запускаем напрямую (если S01allow не установлен)
         log "Запускаю сервис..."
-        if sh "${ALLOW_INITD_DIR}/S99monitor" restart >>"$LOG_FILE" 2>&1; then
+        MONITOR_SCRIPT="${ALLOW_INITD_DIR}/S99monitor"
+        [ -f "$MONITOR_SCRIPT" ] || MONITOR_SCRIPT="${ALLOW_INITD_DIR}/X99monitor"
+        if sh "$MONITOR_SCRIPT" restart >>"$LOG_FILE" 2>&1; then
             log "monitor запущен."
             # Отмечаем успешную установку в state.db
             state_set "$STATE_KEY_INSTALLED" "$(date '+%Y-%m-%d %H:%M:%S')"
@@ -171,33 +184,29 @@ uninstall_monitor() {
             return 0
         fi
     fi
-    # Останавливаем и удаляем скрипт из ALLOW_INITD_DIR
-    if [ -x "${ALLOW_INITD_DIR}/S99monitor" ]; then
-        sh "${ALLOW_INITD_DIR}/S99monitor" stop >>"$LOG_FILE" 2>&1 || true
-        rm -f "${ALLOW_INITD_DIR}/S99monitor"
-    fi
-    # Также проверяем старую директорию на случай миграции
-    if [ -x "${INITD_DIR}/S99monitor" ]; then
-        sh "${INITD_DIR}/S99monitor" stop >>"$LOG_FILE" 2>&1 || true
-        rm -f "${INITD_DIR}/S99monitor"
-    fi
-    # Останавливаем процесс monitor через kill (без pkill)
-    MONITOR_PIDS=$(ps w | grep "${APP_DIR}/app.py" | grep -v grep | awk '{print $1}')
-    if [ -n "$MONITOR_PIDS" ]; then
-        log "Останавливаю процессы monitor (PIDs: $MONITOR_PIDS)..."
-        for PID in $MONITOR_PIDS; do
-            kill "$PID" 2>/dev/null || true
-        done
-        sleep 1
-        # Проверяем, остановились ли процессы
-        REMAINING_PIDS=$(ps w | grep "${APP_DIR}/app.py" | grep -v grep | awk '{print $1}')
-        if [ -n "$REMAINING_PIDS" ]; then
-            log "Принудительное завершение процессов monitor (PIDs: $REMAINING_PIDS)..."
-            for PID in $REMAINING_PIDS; do
-                kill -9 "$PID" 2>/dev/null || true
-            done
+    # Останавливаем и удаляем скрипт из ALLOW_INITD_DIR (S и X)
+    for m in "${ALLOW_INITD_DIR}/S99monitor" "${ALLOW_INITD_DIR}/X99monitor"; do
+        if [ -x "$m" ]; then
+            sh "$m" stop >>"$LOG_FILE" 2>&1 || true
+            rm -f "$m"
         fi
+    done
+    # Также проверяем старую директорию на случай миграции
+    for m in "${INITD_DIR}/S99monitor" "${INITD_DIR}/X99monitor"; do
+        if [ -x "$m" ]; then
+            sh "$m" stop >>"$LOG_FILE" 2>&1 || true
+            rm -f "$m"
+        fi
+    done
+    # Останавливаем lighttpd по PIDFILE
+    if [ -f "$PID_FILE" ]; then
+        MPID=$(cat "$PID_FILE")
+        [ -n "$MPID" ] && kill "$MPID" 2>/dev/null || true
+        sleep 1
+        [ -n "$MPID" ] && kill -9 "$MPID" 2>/dev/null || true
     fi
+    # На всякий случай убиваем lighttpd с нашим конфигом
+    ps w | grep "lighttpd.*allow/monitor" | grep -v grep | awk '{print $1}' | xargs kill -9 2>/dev/null || true
     rm -f "$PID_FILE" 2>/dev/null || true
     
     # Удаляем директории (кроме LOG_DIR, чтобы можно было записать финальное сообщение)
@@ -225,7 +234,7 @@ check_monitor() {
     RUNNING=0
     if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
         RUNNING=1
-    elif ps w | grep -v grep | grep -q "${APP_DIR}/app.py"; then
+    elif ps w | grep -v grep | grep -q "lighttpd.*allow/monitor"; then
         RUNNING=1
     fi
     if [ "$RUNNING" -eq 1 ]; then

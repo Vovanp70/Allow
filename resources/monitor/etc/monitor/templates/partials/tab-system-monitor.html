@@ -32,18 +32,13 @@
                     <span class="label">Порт:</span>
                     <span class="value" id="stubby-port">-</span>
                 </div>
-                <div class="card-actions">
-                    <button class="btn btn-primary" id="stubby-start-btn" onclick="startStubby()" style="display: none;">Запустить</button>
-                    <button class="btn btn-danger" id="stubby-stop-btn" onclick="stopStubby()" style="display: none;">Остановить</button>
-                    <button class="btn btn-secondary" onclick="openStubbyConfigModal()">Конфигурация</button>
-                </div>
             </div>
         </div>
 
-        <!-- Карточка: Stubby Family -->
-        <div class="card">
+        <!-- Карточка: Stubby-family -->
+        <div class="card" id="dashboard-card-stubby-family">
             <div class="card-header">
-                <h2>Stubby Family</h2>
+                <h2>Stubby-family</h2>
             </div>
             <div class="card-content" id="stubby-family-info">
                 <div class="info-item">
@@ -54,18 +49,13 @@
                     <span class="label">Порт:</span>
                     <span class="value" id="stubby-family-port">-</span>
                 </div>
-                <div class="card-actions">
-                    <button class="btn btn-primary" id="stubby-family-start-btn" onclick="startStubbyFamily()" style="display: none;">Запустить</button>
-                    <button class="btn btn-danger" id="stubby-family-stop-btn" onclick="stopStubbyFamily()" style="display: none;">Остановить</button>
-                    <button class="btn btn-secondary" onclick="openStubbyFamilyConfigModal()">Конфигурация</button>
-                </div>
             </div>
         </div>
 
-        <!-- Карточка: DNSMASQ full -->
+        <!-- Карточка: Dnsmasq-full -->
         <div class="card">
             <div class="card-header">
-                <h2>DNSMASQ full</h2>
+                <h2>Dnsmasq-full</h2>
             </div>
             <div class="card-content" id="dnsmasq-info">
                 <div class="info-item">
@@ -76,18 +66,13 @@
                     <span class="label">Порт:</span>
                     <span class="value" id="dnsmasq-port">-</span>
                 </div>
-                <div class="card-actions">
-                    <button class="btn btn-secondary" id="dnsmasq-restart-btn" onclick="restartDnsmasq()">Перезапустить</button>
-                    <button class="btn btn-secondary" onclick="openDnsmasqConfigEditor()">Конфигурация</button>
-                    <button class="btn btn-secondary" onclick="openDnsmasqLogs()">Логи</button>
-                </div>
             </div>
         </div>
 
-        <!-- Карточка: DNSMASQ Family -->
-        <div class="card">
+        <!-- Карточка: Dnsmasq-full family -->
+        <div class="card" id="dashboard-card-dnsmasq-family">
             <div class="card-header">
-                <h2>DNSMASQ Family</h2>
+                <h2>Dnsmasq-full family</h2>
             </div>
             <div class="card-content" id="dnsmasq-family-info">
                 <div class="info-item">
@@ -98,10 +83,22 @@
                     <span class="label">Порт:</span>
                     <span class="value" id="dnsmasq-family-port">-</span>
                 </div>
-                <div class="card-actions">
-                    <button class="btn btn-secondary" id="dnsmasq-family-restart-btn" onclick="restartDnsmasqFamily()">Перезапустить</button>
-                    <button class="btn btn-secondary" onclick="openDnsmasqFamilyConfigEditor()">Конфигурация</button>
-                    <button class="btn btn-secondary" onclick="openDnsmasqFamilyLogs()">Логи</button>
+            </div>
+        </div>
+
+        <!-- Карточка: Sing-box -->
+        <div class="card">
+            <div class="card-header">
+                <h2>Sing-box</h2>
+            </div>
+            <div class="card-content" id="singbox-info">
+                <div class="info-item">
+                    <span class="label">Статус:</span>
+                    <span class="value" id="singbox-status">Проверка...</span>
+                </div>
+                <div class="info-item">
+                    <span class="label">PID:</span>
+                    <span class="value" id="singbox-pid">-</span>
                 </div>
             </div>
         </div>

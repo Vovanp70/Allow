@@ -31,22 +31,6 @@
   ],
   "outbounds": [
     {
-      "type": "vless",
-      "tag": "vless-out",
-      "server": "privateaqt.duckdns.org",
-      "server_port": 2054,
-      "uuid": "ac482575-317a-49b9-a184-44134643c418",
-      "flow": "xtls-rprx-vision",
-      "tls": {
-        "enabled": true,
-        "server_name": "privateaqt.duckdns.org",
-        "insecure": false,
-        "alpn": [
-          "http/1.1"
-        ]
-      }
-    },
-    {
       "type": "direct",
       "tag": "direct"
     },
@@ -57,7 +41,6 @@
   ],
   "route": {
     "auto_detect_interface": true,
-    "final": "vless-out"
+    "final": "direct"
   }
 }
-

@@ -1,0 +1,290 @@
+#!/bin/sh
+
+# Скрипт автозапуска system monitor (lighttpd + CGI)
+# Каскад: NDM -> monitor
+# Использует конфиг: /opt/etc/allow/monitor/lighttpd.conf
+
+prefix="/opt"
+APP_DIR="${prefix}/etc/allow/monitor"
+PIDFILE="${prefix}/var/run/monitor.pid"
+LOGFILE="${prefix}/var/log/allow/monitor/monitor.log"
+LIGHTTPD_CONF="${APP_DIR}/lighttpd.conf"
+MONITOR_PORT="8888"
+
+LIGHTTPD_BIN=""
+for p in "${prefix}/bin/lighttpd" "${prefix}/sbin/lighttpd"; do
+    [ -x "$p" ] && LIGHTTPD_BIN="$p" && break
+done
+[ -z "$LIGHTTPD_BIN" ] && LIGHTTPD_BIN="$(PATH=${prefix}/bin:${prefix}/sbin command -v lighttpd 2>/dev/null)"
+[ -z "$LIGHTTPD_BIN" ] && LIGHTTPD_BIN="lighttpd"
+
+# Создаем директории для run и log
+PATH=/opt/bin:/opt/sbin:/sbin:/bin:/usr/sbin:/usr/bin
+mkdir -p "${APP_DIR}" "$(dirname "$PIDFILE")" "$(dirname "$LOGFILE")"
+
+is_our_monitor_pid() {
+    pid="$(echo "${1:-}" | tr -cd '0-9')"
+    [ -n "${pid:-}" ] || return 1
+    kill -0 "$pid" 2>/dev/null || return 1
+
+    if [ -r "/proc/$pid/cmdline" ]; then
+        cmd="$(tr '\000' ' ' <"/proc/$pid/cmdline" 2>/dev/null | tr -d '\r\n')"
+        [ -n "${cmd:-}" ] || return 1
+        case "$cmd" in
+            lighttpd\ *) ;;
+            *) return 1 ;;
+        esac
+        case "$cmd" in
+            *"-f $LIGHTTPD_CONF"*|*"-f$LIGHTTPD_CONF"*) ;;
+            *) return 1 ;;
+        esac
+        return 0
+    fi
+
+    for pat in "lighttpd.*-f.*$LIGHTTPD_CONF" "lighttpd.*$LIGHTTPD_CONF"; do
+        for p in $(pgrep -f "$pat" 2>/dev/null); do
+            p="$(echo "$p" | tr -cd '0-9')"
+            [ -n "${p:-}" ] || continue
+            if [ "$p" = "$pid" ]; then
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
+get_pid_on_port() {
+    port="$(echo "${1:-8888}" | tr -cd '0-9')"
+    [ -n "$port" ] || return 1
+
+    if command -v netstat >/dev/null 2>&1; then
+        pid="$(netstat -tlnp 2>/dev/null | awk -v p=":$port" '$4 ~ p {gsub(/\/.*/,"",$7); print $7; exit}')"
+        pid="$(echo "${pid:-}" | tr -cd '0-9')"
+        if [ -n "${pid:-}" ] && kill -0 "$pid" 2>/dev/null; then
+            echo "$pid"
+            return 0
+        fi
+    fi
+
+    if command -v ss >/dev/null 2>&1; then
+        pid="$(ss -tlnp 2>/dev/null | grep ":${port}" | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1)"
+        pid="$(echo "${pid:-}" | tr -cd '0-9')"
+        if [ -n "${pid:-}" ] && kill -0 "$pid" 2>/dev/null; then
+            echo "$pid"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+get_running_pids() {
+    if [ -f "$PIDFILE" ]; then
+        pid_file="$(cat "$PIDFILE" 2>/dev/null | tr -cd '0-9')"
+        if [ -n "${pid_file:-}" ] && is_our_monitor_pid "$pid_file" 2>/dev/null; then
+            echo "$pid_file"
+            return 0
+        fi
+    fi
+
+    port_pid="$(get_pid_on_port "$MONITOR_PORT" 2>/dev/null)"
+    if [ -n "${port_pid:-}" ] && is_our_monitor_pid "$port_pid" 2>/dev/null; then
+        echo "$port_pid"
+        return 0
+    fi
+
+    found=0
+    for p in $(pgrep lighttpd 2>/dev/null); do
+        p="$(echo "$p" | tr -cd '0-9')"
+        [ -n "${p:-}" ] || continue
+        if is_our_monitor_pid "$p" 2>/dev/null; then
+            echo "$p"
+            found=1
+        fi
+    done
+    if [ "$found" -eq 1 ]; then
+        return 0
+    fi
+
+    for pat in "lighttpd.*-f.*$LIGHTTPD_CONF" "lighttpd.*$LIGHTTPD_CONF"; do
+        for p in $(pgrep -f "$pat" 2>/dev/null); do
+            p="$(echo "$p" | tr -cd '0-9')"
+            [ -n "${p:-}" ] || continue
+            if kill -0 "$p" 2>/dev/null; then
+                echo "$p"
+                found=1
+            fi
+        done
+    done
+
+    [ "$found" -eq 1 ] && return 0
+    return 1
+}
+
+get_running_pid() {
+    pid="$(get_running_pids 2>/dev/null | head -1 | tr -cd '0-9')"
+    if [ -n "${pid:-}" ] && kill -0 "$pid" 2>/dev/null; then
+        echo "$pid"
+        return 0
+    fi
+    return 1
+}
+
+status_kv() {
+    PIDS="$(get_running_pids 2>/dev/null || true)"
+    PID_PRIMARY="$(echo "${PIDS:-}" | head -1 | tr -cd '0-9')"
+    STATUS="notrunning"
+    if [ -n "${PID_PRIMARY:-}" ] && kill -0 "$PID_PRIMARY" 2>/dev/null; then
+        STATUS="running"
+        echo "$PID_PRIMARY" >"$PIDFILE" 2>/dev/null || true
+    fi
+    echo "STATUS=$STATUS"
+    echo "PID=$PID_PRIMARY"
+    echo "PORT=$MONITOR_PORT"
+    echo "CONF_FILE=$LIGHTTPD_CONF"
+    echo "LOG_FILE=$LOGFILE"
+    echo "PID_FILE=$PIDFILE"
+}
+
+start() {
+    echo "Запуск system monitor (lighttpd)..."
+
+    if [ ! -f "$LIGHTTPD_CONF" ]; then
+        echo "Ошибка: конфигурационный файл $LIGHTTPD_CONF не найден"
+        return 1
+    fi
+
+    PIDS_RUNNING="$(get_running_pids 2>/dev/null || true)"
+    PID_PRIMARY="$(echo "${PIDS_RUNNING:-}" | head -1 | tr -cd '0-9')"
+    if [ -n "${PID_PRIMARY:-}" ] && kill -0 "$PID_PRIMARY" 2>/dev/null; then
+        echo "System monitor уже запущен (PID: $PID_PRIMARY)"
+        echo "$PID_PRIMARY" >"$PIDFILE" 2>/dev/null || true
+        return 0
+    fi
+
+    PORT_PID="$(get_pid_on_port "$MONITOR_PORT" 2>/dev/null)"
+    if [ -n "$PORT_PID" ] && [ "$PORT_PID" != "$$" ]; then
+        echo "Освобождаем порт $MONITOR_PORT (PID: $PORT_PID)..."
+        kill -9 "$PORT_PID" 2>/dev/null || true
+        sleep 1
+    fi
+
+    "$LIGHTTPD_BIN" -f "$LIGHTTPD_CONF" >>"$LOGFILE" 2>&1 &
+    sleep 1
+
+    PID_LISTEN="$(get_pid_on_port "$MONITOR_PORT" 2>/dev/null)"
+    if [ -n "${PID_LISTEN:-}" ]; then
+        echo "$PID_LISTEN" >"$PIDFILE"
+        echo "System monitor запущен (PID: $PID_LISTEN)"
+        return 0
+    fi
+
+    PIDS_RUNNING="$(get_running_pids 2>/dev/null || true)"
+    PID_PRIMARY="$(echo "${PIDS_RUNNING:-}" | head -1 | tr -cd '0-9')"
+    if [ -n "${PID_PRIMARY:-}" ] && kill -0 "$PID_PRIMARY" 2>/dev/null; then
+        echo "$PID_PRIMARY" >"$PIDFILE" 2>/dev/null || true
+        echo "System monitor запущен (PID: $PID_PRIMARY)"
+        return 0
+    fi
+
+    echo "Ошибка: не удалось запустить system monitor (binary: $LIGHTTPD_BIN)"
+    tail -5 "$LOGFILE" 2>/dev/null || true
+    rm -f "$PIDFILE"
+    return 1
+}
+
+stop() {
+    echo "Остановка system monitor..."
+
+    if [ -f "$PIDFILE" ]; then
+        PID="$(cat "$PIDFILE" 2>/dev/null | tr -cd '0-9')"
+        if [ -n "$PID" ] && is_our_monitor_pid "$PID" 2>/dev/null; then
+            kill "$PID" 2>/dev/null
+            sleep 1
+            if kill -0 "$PID" 2>/dev/null; then
+                kill -9 "$PID" 2>/dev/null
+            fi
+            echo "System monitor остановлен"
+        else
+            echo "System monitor не запущен (PID-файл устарел или указывает не на процесс monitor)"
+        fi
+        rm -f "$PIDFILE"
+    else
+        PIDS="$(get_running_pids 2>/dev/null || true)"
+        if [ -n "${PIDS:-}" ]; then
+            echo "$PIDS" | while read -r PID; do
+                PID="$(echo "${PID:-}" | tr -cd '0-9')"
+                [ -n "${PID:-}" ] || continue
+                if kill -0 "$PID" 2>/dev/null; then
+                    kill "$PID" 2>/dev/null
+                    sleep 1
+                    if kill -0 "$PID" 2>/dev/null; then
+                        kill -9 "$PID" 2>/dev/null
+                    fi
+                    echo "System monitor остановлен (PID: $PID)"
+                fi
+            done
+            rm -f "$PIDFILE" 2>/dev/null || true
+        else
+            PORT_PID="$(get_pid_on_port "$MONITOR_PORT" 2>/dev/null)"
+            if [ -n "$PORT_PID" ]; then
+                kill "$PORT_PID" 2>/dev/null
+                sleep 1
+                kill -9 "$PORT_PID" 2>/dev/null || true
+                echo "System monitor остановлен (PID: $PORT_PID)"
+            fi
+            rm -f "$PIDFILE" 2>/dev/null || true
+        fi
+    fi
+
+    ps w 2>/dev/null | grep "lighttpd.*allow/monitor" | grep -v grep | awk '{print $1}' | xargs kill -9 2>/dev/null || true
+    sleep 1
+    echo "System monitor stopped"
+}
+
+restart() {
+    stop
+    sleep 1
+    start
+}
+
+status() {
+    if [ "${2:-}" = "--kv" ] || [ "${2:-}" = "--machine" ] || [ "${1:-}" = "--kv" ] || [ "${1:-}" = "--machine" ]; then
+        status_kv
+        return 0
+    fi
+
+    PIDS="$(get_running_pids 2>/dev/null || true)"
+    PID_PRIMARY="$(echo "${PIDS:-}" | head -1 | tr -cd '0-9')"
+    if [ -n "${PID_PRIMARY:-}" ]; then
+        echo "System monitor запущен (PID: $PID_PRIMARY)"
+        echo "Порт: $MONITOR_PORT"
+        echo "Логи: $LOGFILE"
+        return 0
+    fi
+
+    echo "System monitor не запущен"
+    return 1
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        restart
+        ;;
+    status)
+        shift || true
+        status "$@"
+        ;;
+    *)
+        echo "Использование: $0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac
+
+exit 0

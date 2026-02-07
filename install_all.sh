@@ -36,7 +36,7 @@ allow_use_color() {
 allow_info()  { printf '[ALLOW] %s\n' "$*"; }
 allow_warn()  { if allow_use_color; then printf '\033[33m[ALLOW] [WARN] %s\033[0m\n' "$*"; else printf '[ALLOW] [WARN] %s\n' "$*"; fi >&2; }
 allow_err()   { if allow_use_color; then printf '\033[31m[ALLOW] [ERR] %s\033[0m\n' "$*"; else printf '[ALLOW] [ERR] %s\n' "$*"; fi >&2; }
-allow_stage() { printf '\n[ALLOW] === %s ===\n' "$*"; }
+allow_stage() { printf '\n============================================================\n[ALLOW] === %s ===\n============================================================\n' "$*"; }
 allow_comp()  { printf '[ALLOW] >> %s\n' "$*"; }
 allow_ok()    { if allow_use_color; then printf '\033[32m[ALLOW] %s: OK\033[0m\n' "$*"; else printf '[ALLOW] %s: OK\n' "$*"; fi; }
 allow_skip()  { printf '[ALLOW] %s: SKIP\n' "$*"; }
@@ -339,6 +339,7 @@ run_all_default_install() {
     
     allow_stage "Установка компонентов"
     for comp in $COMPONENTS; do
+        printf '\n============================================================\n'
         if run_component "$comp" "install" "0"; then
             if state_has "installed.${comp}"; then
                 INSTALLED_COMPONENTS="$INSTALLED_COMPONENTS $comp"
@@ -361,6 +362,28 @@ run_all_default_install() {
             fi
         fi
     done
+    
+    # DNS mode: stable — после установки обоих dnsmasq и allow
+    DNS_MODE_SCRIPT="/opt/etc/allow/manage.d/keenetic-entware/dns-mode.sh"
+    if state_has "installed.stubby" && state_has "installed.dnsmasq-full" && [ -x "$DNS_MODE_SCRIPT" ]; then
+        allow_stage "DNS mode: stable"
+        if ETC_ALLOW=/opt/etc/allow "$DNS_MODE_SCRIPT" set stable; then
+            allow_ok "dns-mode set stable"
+        else
+            allow_warn "dns-mode set stable завершился с ошибкой (продолжаем)."
+        fi
+    fi
+
+    # Активация init-скриптов (X -> S) для установленных компонентов
+    if [ -x "/opt/etc/allow/manage.d/keenetic-entware/autostart.sh" ]; then
+        for comp in stubby stubby-family dnsmasq-full dnsmasq-full-family sing-box monitor; do
+            if state_has "installed.${comp}"; then
+                if /opt/etc/allow/manage.d/keenetic-entware/autostart.sh "$comp" activate >>/dev/null 2>&1; then
+                    : # уже активен или активирован
+                fi
+            fi
+        done
+    fi
     
     allow_stage "Итоги установки"
     printf '[ALLOW] OK: %s  FAIL: %s\n' "$INSTALL_OK_COUNT" "$INSTALL_FAIL_COUNT"
@@ -474,28 +497,26 @@ has_installed_components() {
     return 1
 }
 
+# Путь к init-скрипту компонента (S или X). Печатает путь в stdout, код возврата 0 если найден.
+get_init_script_path() {
+    KEY="$1"
+    ALLOW_INITD="/opt/etc/allow/init.d"
+    INITD="/opt/etc/init.d"
+    case "$KEY" in
+        stubby) for n in S97stubby X97stubby; do for d in "$ALLOW_INITD" "$INITD"; do [ -x "${d}/${n}" ] && echo "${d}/${n}" && return 0; done; done ;;
+        stubby-family) for n in S97stubby-family X97stubby-family; do for d in "$ALLOW_INITD" "$INITD"; do [ -x "${d}/${n}" ] && echo "${d}/${n}" && return 0; done; done ;;
+        dnsmasq-full) for n in S98dnsmasq-full X98dnsmasq-full; do for d in "$ALLOW_INITD" "$INITD"; do [ -x "${d}/${n}" ] && echo "${d}/${n}" && return 0; done; done ;;
+        dnsmasq-full-family) for n in S98dnsmasq-family X98dnsmasq-family; do for d in "$ALLOW_INITD" "$INITD"; do [ -x "${d}/${n}" ] && echo "${d}/${n}" && return 0; done; done ;;
+        *) return 1 ;;
+    esac
+    return 1
+}
+
 # Чтение порта компонента из init-скрипта (status --kv)
 read_component_port() {
     KEY="$1"
     DEFAULT="${2:-}"
-    SCRIPT=""
-    case "$KEY" in
-        stubby) SCRIPT="/opt/etc/allow/init.d/S97stubby" ;;
-        stubby-family) SCRIPT="/opt/etc/allow/init.d/S97stubby-family" ;;
-        dnsmasq-full) SCRIPT="/opt/etc/allow/init.d/S98dnsmasq-full" ;;
-        dnsmasq-full-family) SCRIPT="/opt/etc/allow/init.d/S98dnsmasq-family" ;;
-        *) SCRIPT="" ;;
-    esac
-
-    # fallback на системный init.d, если allow/init.d отсутствует
-    if [ -n "$SCRIPT" ] && [ ! -x "$SCRIPT" ]; then
-        case "$KEY" in
-            stubby) SCRIPT="/opt/etc/init.d/S97stubby" ;;
-            stubby-family) SCRIPT="/opt/etc/init.d/S97stubby-family" ;;
-            dnsmasq-full) SCRIPT="/opt/etc/init.d/S98dnsmasq-full" ;;
-            dnsmasq-full-family) SCRIPT="/opt/etc/init.d/S98dnsmasq-family" ;;
-        esac
-    fi
+    SCRIPT="$(get_init_script_path "$KEY")" || true
 
     if [ -n "${SCRIPT:-}" ] && [ -x "$SCRIPT" ]; then
         PORT="$(sh "$SCRIPT" status --kv 2>/dev/null | awk -F= '$1=="EFFECTIVE_PORT"{print $2; exit}' 2>/dev/null | tr -cd '0-9')"
@@ -622,7 +643,8 @@ run_all_default_uninstall() {
         [ -f "/opt/etc/allow/state.db" ] && rm -f /opt/etc/allow/state.db 2>/dev/null || true
         for b in /opt/etc/allow/setsettings.backup /opt/etc/allow/setsettings.backup.prev; do [ -f "$b" ] && rm -f "$b" 2>/dev/null || true; done
         [ -d "/opt/etc/allow/init.d" ] && rm -rf /opt/etc/allow/init.d 2>/dev/null || true
-        for comp_dir in /opt/etc/allow/stubby /opt/etc/allow/dnsmasq-full /opt/etc/allow/sing-box /opt/etc/allow/monitor /opt/etc/allow/bin /opt/etc/allow/curl-http3; do
+        [ -f "/opt/etc/allow/dns_mode" ] && rm -f /opt/etc/allow/dns_mode 2>/dev/null || true
+        for comp_dir in /opt/etc/allow/stubby /opt/etc/allow/dnsmasq-full /opt/etc/allow/sing-box /opt/etc/allow/monitor /opt/etc/allow/bin /opt/etc/allow/curl-http3 /opt/etc/allow/manage.d /opt/etc/allow/lists; do
             [ -d "$comp_dir" ] && rm -rf "$comp_dir" 2>/dev/null || true
         done
         REMAINING_COUNT=0

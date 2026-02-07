@@ -4,17 +4,29 @@
 # Создает правила ipset=/domain/ipset для каждого домена из hosts файлов
 # Добавляет IP адреса напрямую в ipset (если указаны в hosts файлах)
 # Приоритет: nonbypass > bypass
-# Оптимизированная версия с батчингом и кэшированием
+# Источник списков: LISTS_BASE/nonbypass и LISTS_BASE/bypass (результат sync-allow-lists.sh).
+# Папка zapret для ipset не обрабатывается.
+#
+# Порядок запуска: сначала sync-allow-lists.sh (заполняет LISTS_BASE), затем этот скрипт.
+# sync-allow-lists.sh по успеху сам вызывает process-hosts.sh; можно также вызывать вручную
+# или из cron/init.d после sync-allow-lists.sh.
+#
+# Ручная проверка: 1) sync-allow-lists.sh  2) process-hosts.sh
+# 3) проверить: cat dnsmasq-ipset.conf (ipset=/domain/nonbypass, ipset=/domain/bypass)
+# 4) ipset list nonbypass; ipset list bypass
 
 PATH=/opt/sbin:/opt/bin:/opt/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-IPSET_DIR="/opt/etc/allow/dnsmasq-full/ipsets"
+LISTS_BASE="${LISTS_BASE:-/opt/etc/allow/lists}"
 PROCESS_SCRIPT_DIR="/opt/etc/allow/dnsmasq-full"
 DNSMASQ_IPSET_CONF="/opt/etc/allow/dnsmasq-full/dnsmasq-ipset.conf"
 DNSMASQ_IPSET_CONF_TMP="${DNSMASQ_IPSET_CONF}.tmp"
 
-# Создаем директории для hosts-файлов, если не существует
-mkdir -p "$IPSET_DIR" 2>/dev/null || true
+# Проверка наличия хотя бы одного каталога-источника
+if [ ! -d "${LISTS_BASE}/nonbypass" ] && [ ! -d "${LISTS_BASE}/bypass" ]; then
+    echo "process-hosts: ни ${LISTS_BASE}/nonbypass, ни ${LISTS_BASE}/bypass не найдены. Запустите sync-allow-lists.sh." >&2
+    exit 1
+fi
 
 # Создаем временный файл для конфигурации
 > "$DNSMASQ_IPSET_CONF_TMP"
@@ -241,164 +253,6 @@ create_ipsets() {
     return 0
 }
 
-# Функция для извлечения доменов из hosts файла (только из блоков HOSTS)
-extract_hosts_domains() {
-    local hosts_file="$1"
-    local temp_domains_file="/tmp/bypass_domains_$$"
-    
-    [ ! -f "$hosts_file" ] && return 1
-    
-    # Извлекаем домены из блоков HOSTS
-    awk '
-    BEGIN {
-        in_hosts_block = 0
-    }
-    {
-        # Сначала проверяем маркеры блоков (до удаления комментариев)
-        # Проверяем начало блока HOSTS (может быть с # в начале)
-        if ($0 ~ /#\s*@BLOCK_START:.*:HOSTS/ || $0 ~ /@BLOCK_START:.*:HOSTS/) {
-            in_hosts_block = 1
-            next
-        }
-        
-        # Проверяем конец блока
-        if ($0 ~ /#\s*@BLOCK_END/ || $0 ~ /@BLOCK_END/) {
-            in_hosts_block = 0
-            next
-        }
-        
-        # Пропускаем блоки IPS
-        if ($0 ~ /#\s*@BLOCK_START:.*:IPS/ || $0 ~ /@BLOCK_START:.*:IPS/) {
-            in_hosts_block = 0
-            next
-        }
-        
-        # Теперь убираем комментарии и пробелы
-        gsub(/#.*$/, "")
-        gsub(/^[[:space:]]+|[[:space:]]+$/, "")
-        if (length($0) == 0) next
-        
-        # Обрабатываем только внутри блока HOSTS
-        if (in_hosts_block != 1) next
-        
-        # Пропускаем строки, начинающиеся с IP-адреса
-        if ($0 ~ /^([0-9]{1,3}\.){3}[0-9]{1,3}(\/[0-9]{1,2})?([[:space:]]|$)/) {
-            # Если есть домены после IP, извлекаем их
-            for (i = 2; i <= NF; i++) {
-                if ($i != "" && $i !~ /^#/) {
-                    domain = $i
-                    # Убираем wildcard префикс для сохранения
-                    gsub(/^\*\./, "", domain)
-                    if (length(domain) > 0) {
-                        print domain
-                    }
-                }
-            }
-        } else {
-            # Просто домен
-            domain = $0
-            # Убираем wildcard префикс для сохранения
-            gsub(/^\*\./, "", domain)
-            if (length(domain) > 0) {
-                print domain
-            }
-        }
-    }
-    ' "$hosts_file" | sort -u > "$temp_domains_file" 2>/dev/null
-    
-    if [ -s "$temp_domains_file" ]; then
-        cat "$temp_domains_file"
-        rm -f "$temp_domains_file" 2>/dev/null || true
-        return 0
-    else
-        rm -f "$temp_domains_file" 2>/dev/null || true
-        return 1
-    fi
-}
-
-# Функция для синхронизации доменов из bypass.txt в netrogat.txt
-sync_bypass_to_netrogat() {
-    local bypass_file="$IPSET_DIR/bypass.txt"
-    local netrogat_file="/opt/zapret/lists/netrogat.txt"
-    
-    # Проверяем наличие файла netrogat.txt
-    if [ ! -f "$netrogat_file" ]; then
-        echo "Файл $netrogat_file не существует, пропускаю синхронизацию" >&2
-        return 0  # Файл не существует, ничего не делаем
-    fi
-    
-    echo "Начинаю синхронизацию доменов из $bypass_file в $netrogat_file" >&2
-    
-    # Проверяем наличие bypass.txt
-    if [ ! -f "$bypass_file" ]; then
-        echo "Ошибка: файл $bypass_file не найден" >&2
-        return 1
-    fi
-    
-    # Извлекаем домены из bypass.txt
-    local temp_bypass_domains="/tmp/bypass_domains_for_netrogat_$$"
-    extract_hosts_domains "$bypass_file" > "$temp_bypass_domains" 2>/dev/null
-    
-    if [ ! -s "$temp_bypass_domains" ]; then
-        echo "Предупреждение: не удалось извлечь домены из $bypass_file или файл пустой" >&2
-        rm -f "$temp_bypass_domains" 2>/dev/null || true
-        return 0  # Нет доменов для синхронизации
-    fi
-    
-    local domains_count=$(wc -l < "$temp_bypass_domains" 2>/dev/null || echo "0")
-    echo "Извлечено доменов из bypass.txt: $domains_count" >&2
-    
-    # Создаем временный файл для нового содержимого netrogat.txt
-    local temp_netrogat="/tmp/netrogat_$$"
-    
-    # Читаем существующие домены из netrogat.txt (если есть)
-    local existing_domains="/tmp/netrogat_existing_$$"
-    if [ -s "$netrogat_file" ]; then
-        # Извлекаем только валидные домены (не комментарии, не пустые строки)
-        grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$netrogat_file" | \
-            sed 's/[[:space:]]*#.*$//' | \
-            sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | \
-            grep -vE '^$' > "$existing_domains" 2>/dev/null || true
-        local existing_count=$(wc -l < "$existing_domains" 2>/dev/null || echo "0")
-        echo "Существующих доменов в netrogat.txt: $existing_count" >&2
-    else
-        > "$existing_domains"
-        echo "Файл netrogat.txt пустой или не существует" >&2
-    fi
-    
-    # Объединяем существующие и новые домены, удаляем дубликаты
-    cat "$existing_domains" "$temp_bypass_domains" 2>/dev/null | sort -u > "$temp_netrogat" 2>/dev/null
-    
-    # Сохраняем обновленный файл
-    if [ -s "$temp_netrogat" ]; then
-        local total_count=$(wc -l < "$temp_netrogat" 2>/dev/null || echo "0")
-        echo "Всего доменов после объединения: $total_count" >&2
-        
-        # Создаем директорию, если не существует
-        mkdir -p "$(dirname "$netrogat_file")" 2>/dev/null || true
-        
-        # Сохраняем с сохранением прав доступа (если файл существовал)
-        if [ -f "$netrogat_file" ]; then
-            cp "$netrogat_file" "${netrogat_file}.bak" 2>/dev/null || true
-        fi
-        
-        if cp "$temp_netrogat" "$netrogat_file" 2>/dev/null; then
-            echo "Синхронизировано доменов из bypass.txt в netrogat.txt: $domains_count" >&2
-        else
-            echo "Ошибка: не удалось обновить $netrogat_file (возможно, нет прав доступа)" >&2
-            rm -f "$temp_bypass_domains" "$temp_netrogat" "$existing_domains" 2>/dev/null || true
-            return 1
-        fi
-    else
-        echo "Ошибка: временный файл пустой, нечего сохранять" >&2
-    fi
-    
-    # Очистка временных файлов
-    rm -f "$temp_bypass_domains" "$temp_netrogat" "$existing_domains" 2>/dev/null || true
-    
-    return 0
-}
-
 # Обрабатываем hosts файлы
 echo "# Автоматически сгенерированная конфигурация dnsmasq для ipset" > "$DNSMASQ_IPSET_CONF_TMP"
 echo "# Сгенерировано: $(date)" >> "$DNSMASQ_IPSET_CONF_TMP"
@@ -408,19 +262,23 @@ echo "" >> "$DNSMASQ_IPSET_CONF_TMP"
 create_ipsets "nonbypass"
 create_ipsets "bypass"
 
-# Обрабатываем hosts файлы в порядке приоритета (высший приоритет первым)
-# Приоритет: nonbypass > zapret > bypass
-# nonbypass - самый высокий приоритет, обрабатывается первым, не пропускаем
-process_hosts_file "$IPSET_DIR/nonbypass.txt" "nonbypass" "Исключения (высший приоритет)" "0"
+# Обрабатываем hosts файлы из LISTS_BASE (результат sync-allow-lists.sh)
+# Приоритет: nonbypass > bypass. zapret не обрабатываем для ipset.
+# nonbypass — первый, все файлы из LISTS_BASE/nonbypass/ → ipset nonbypass
+if [ -d "${LISTS_BASE}/nonbypass" ]; then
+    for f in "${LISTS_BASE}/nonbypass/"*.txt; do
+        [ -f "$f" ] || continue
+        process_hosts_file "$f" "nonbypass" "nonbypass: $(basename "$f")" "0"
+    done
+fi
 
-# zapret обрабатываем с проверкой приоритета (домены попадают в ipset nonbypass)
-process_hosts_file "$IPSET_DIR/zapret.txt" "nonbypass" "Zapret → nonbypass" "1"
-
-# bypass обрабатываем с проверкой приоритета
-process_hosts_file "$IPSET_DIR/bypass.txt" "bypass" "Обход → bypass" "1"
-
-# Синхронизируем домены из bypass.txt в netrogat.txt (если файл существует)
-sync_bypass_to_netrogat
+# bypass — второй, с skip_processed=1 (домен из nonbypass не дублируем в bypass)
+if [ -d "${LISTS_BASE}/bypass" ]; then
+    for f in "${LISTS_BASE}/bypass/"*.txt; do
+        [ -f "$f" ] || continue
+        process_hosts_file "$f" "bypass" "bypass: $(basename "$f")" "1"
+    done
+fi
 
 # Добавляем IP в ipset батчами (оптимизация)
 batch_add_ips "nonbypass"
