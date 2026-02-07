@@ -109,6 +109,9 @@ rotate_copytruncate "/opt/var/log/allow/stubby-family.log" "$OTHER_MAX_BYTES" "$
 # Общий лог автозапуска
 rotate_copytruncate "/opt/var/log/allow/allowstart.log" "$OTHER_MAX_BYTES" "$OTHER_KEEP"
 
+# sync-allow-lists (1 MB)
+rotate_copytruncate "/opt/var/log/allow/sync-allow-lists.log" "$OTHER_MAX_BYTES" "$OTHER_KEEP"
+
 # Логи компонентов в /opt/var/log/allow/** (install/runtime)
 for f in /opt/var/log/allow/*.log /opt/var/log/allow/*/*.log /opt/var/log/allow/*/*.log.* /opt/var/log/allow/*/error.log; do
   [ -e "$f" ] || continue

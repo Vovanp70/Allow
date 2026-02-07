@@ -1,14 +1,17 @@
 #!/bin/sh
 # Синхронизация списков allow: скачивает списки из itdoginfo/allow-domains,
-# создаёт /opt/etc/allow/lists/{bypass,zapret,nonbypass,del-usr}, пересобирает auto‑листы
-# из upstream+extra с учётом del-usr и user‑файлов (*_user.txt, только чтение).
+# extra — из Vovanp70/Allow (lists/itdoginfo-extra). Создаёт /opt/etc/allow/lists/{bypass,zapret,nonbypass,del-usr},
+# пересобирает auto‑листы из upstream+extra с учётом del-usr и user‑файлов (*_user.txt, только чтение).
 
 PATH=/opt/sbin:/opt/bin:/opt/usr/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+SYNC_LOG="${SYNC_LOG:-/opt/var/log/allow/sync-allow-lists.log}"
+log() { printf '%s\n' "$*"; printf '%s\n' "$*" >> "$SYNC_LOG" 2>/dev/null || true; }
 
 LISTS_BASE="${LISTS_BASE:-/opt/etc/allow/lists}"
 TMP_DIR="${TMP_DIR:-/tmp}"
 BASE_URL="https://raw.githubusercontent.com/itdoginfo/allow-domains/refs/heads/main"
-EXTRA_BASE="${EXTRA_BASE:-${LISTS_BASE}/itdoginfo-extra}"
+EXTRA_REPO_URL="${EXTRA_REPO_URL:-https://raw.githubusercontent.com/Vovanp70/Allow/main/lists/itdoginfo-extra}"
 RUS_SERVICES_OUT_NAME="russian_services_hosts_auto.txt"
 
 # Формат: "URL|имя_файла" (без пробелов вокруг |)
@@ -43,27 +46,31 @@ TMP_AUTO="${TMP_DIR}/allow-auto.$$"
 TMP_OLD="${TMP_DIR}/allow-old.$$"
 TMP_ADDED_LIST="${TMP_DIR}/allow-added-list.$$"
 TMP_REMOVED_LIST="${TMP_DIR}/allow-removed-list.$$"
+TMP_EXTRA="${TMP_DIR}/allow-extra.$$"
 
 cleanup() {
     rm -f "$TMP_REMOTE" "$TMP_SRC" "$TMP_SRC_FILTERED" \
           "$TMP_DELUSR" "$TMP_USER" "$TMP_AUTO" "$TMP_OLD" \
-          "$TMP_ADDED_LIST" "$TMP_REMOVED_LIST" 2>/dev/null || true
+          "$TMP_ADDED_LIST" "$TMP_REMOVED_LIST" "$TMP_EXTRA" 2>/dev/null || true
 }
 trap cleanup EXIT
 
 # 1. Создание директорий (POSIX: без brace expansion)
 mkdir -p "$LISTS_BASE" 2>/dev/null || true
 mkdir -p "$LISTS_BASE/bypass" "$LISTS_BASE/zapret" "$LISTS_BASE/nonbypass" "$LISTS_BASE/del-usr" 2>/dev/null || true
+mkdir -p "$(dirname "$SYNC_LOG")" 2>/dev/null || true
 mkdir -p "$TMP_DIR" 2>/dev/null || true
 
 FAIL_COUNT=0
 
-# Russian-services: локальный список (только extra), обрабатывается первым, по умолчанию в nonbypass
-EXTRA_RUS="${EXTRA_BASE}/Russian-services.txt"
-if [ -f "$EXTRA_RUS" ]; then
-    # Источник: только Russian-services.txt
+log "=== sync-allow-lists started $(date '+%Y-%m-%d %H:%M:%S') ==="
+
+# Russian-services: extra из репо Vovanp70/Allow, обрабатывается первым, по умолчанию в nonbypass
+EXTRA_RUS_URL="${EXTRA_REPO_URL}/Russian-services.txt"
+if curl -sfL -o "$TMP_EXTRA" "$EXTRA_RUS_URL" 2>/dev/null; then
+    # Источник: Russian-services.txt из репо
     > "$TMP_SRC"
-    sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' "$EXTRA_RUS" 2>/dev/null | grep -v '^$' >> "$TMP_SRC" 2>/dev/null || true
+    sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' "$TMP_EXTRA" 2>/dev/null | grep -v '^$' >> "$TMP_SRC" 2>/dev/null || true
     sort -u "$TMP_SRC" -o "$TMP_SRC"
 
     # Фильтрация по del-usr
@@ -177,9 +184,9 @@ if [ -f "$EXTRA_RUS" ]; then
             done < "$TMP_REMOVED_LIST"
             [ -n "$out" ] && REMOVED_LIST_SUFFIX=" [$out]"
         fi
-        echo "${RUS_SERVICES_OUT_NAME}: added ${ADDED_COUNT}${ADDED_LIST_SUFFIX}, removed ${REMOVED_COUNT}${REMOVED_LIST_SUFFIX}"
+        log "${RUS_SERVICES_OUT_NAME}: added ${ADDED_COUNT}${ADDED_LIST_SUFFIX}, removed ${REMOVED_COUNT}${REMOVED_LIST_SUFFIX}"
     else
-        echo "sync-allow-lists: не удалось обновить $TARGET_FILE" >&2
+        log "sync-allow-lists: не удалось обновить $TARGET_FILE"
         FAIL_COUNT=$((FAIL_COUNT + 1))
     fi
 fi
@@ -191,68 +198,68 @@ for entry in $LISTS; do
 
     # 2. Скачивание remote в временный файл
     if ! curl -sfL -o "$TMP_REMOTE" "$LIST_URL" 2>/dev/null; then
-        echo "sync-allow-lists: ошибка загрузки $LIST_URL" >&2
+        log "sync-allow-lists: ошибка загрузки $LIST_URL"
         FAIL_COUNT=$((FAIL_COUNT + 1))
         # Не трогаем соответствующий auto‑файл при ошибке источника
         continue
     fi
 
-    # 3. Определение extra‑файла для списка
-    EXTRA_FILE=""
+    # 3. Определение extra‑файла для списка (имя файла в репо Vovanp70/Allow)
+    EXTRA_FILENAME=""
     case "$OUT_NAME" in
         anime_hosts_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/Anime.txt"
+            EXTRA_FILENAME="Anime.txt"
             ;;
         youtube_hosts_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/YouTube.txt"
+            EXTRA_FILENAME="YouTube.txt"
             ;;
         block_hosts_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/Block.txt"
+            EXTRA_FILENAME="Block.txt"
             ;;
         geoblock_hosts_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/GeoBlock.txt"
+            EXTRA_FILENAME="GeoBlock.txt"
             ;;
         news_hosts_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/News.txt"
+            EXTRA_FILENAME="News.txt"
             ;;
         porn_hosts_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/Porn.txt"
+            EXTRA_FILENAME="Porn.txt"
             ;;
         hodca_hosts_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/HODCA.txt"
+            EXTRA_FILENAME="HODCA.txt"
             ;;
         cloudflare_subnets_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/Cloudflare.txt"
+            EXTRA_FILENAME="Cloudflare.txt"
             ;;
         discord_hosts_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/Discord.txt"
+            EXTRA_FILENAME="Discord.txt"
             ;;
         discord_subnets_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/Discord-Subnets.txt"
+            EXTRA_FILENAME="Discord-Subnets.txt"
             ;;
         hdrezka_hosts_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/HDRezka.txt"
+            EXTRA_FILENAME="HDRezka.txt"
             ;;
         meta_hosts_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/Meta.txt"
+            EXTRA_FILENAME="Meta.txt"
             ;;
         meta_subnets_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/Meta-Subnets.txt"
+            EXTRA_FILENAME="Meta-Subnets.txt"
             ;;
         telegram_hosts_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/Telegram.txt"
+            EXTRA_FILENAME="Telegram.txt"
             ;;
         telegram_subnets_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/Telegram-Subnets.txt"
+            EXTRA_FILENAME="Telegram-Subnets.txt"
             ;;
         tiktok_hosts_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/TikTok.txt"
+            EXTRA_FILENAME="TikTok.txt"
             ;;
         twitter_hosts_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/Twitter.txt"
+            EXTRA_FILENAME="Twitter.txt"
             ;;
         twitter_subnets_auto.txt)
-            EXTRA_FILE="${EXTRA_BASE}/Twitter-Subnets.txt"
+            EXTRA_FILENAME="Twitter-Subnets.txt"
             ;;
     esac
 
@@ -260,9 +267,9 @@ for entry in $LISTS; do
     > "$TMP_SRC"
     # remote
     sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' "$TMP_REMOTE" 2>/dev/null | grep -v '^$' >> "$TMP_SRC" 2>/dev/null || true
-    # extra
-    if [ -n "$EXTRA_FILE" ] && [ -f "$EXTRA_FILE" ]; then
-        sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' "$EXTRA_FILE" 2>/dev/null | grep -v '^$' >> "$TMP_SRC" 2>/dev/null || true
+    # extra из репо Vovanp70/Allow
+    if [ -n "$EXTRA_FILENAME" ] && curl -sfL -o "$TMP_EXTRA" "${EXTRA_REPO_URL}/${EXTRA_FILENAME}" 2>/dev/null; then
+        sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' "$TMP_EXTRA" 2>/dev/null | grep -v '^$' >> "$TMP_SRC" 2>/dev/null || true
     fi
     # Удаляем дубликаты
     sort -u "$TMP_SRC" -o "$TMP_SRC"
@@ -379,7 +386,7 @@ for entry in $LISTS; do
         : > "$TMP_AUTO"
     fi
     mv "$TMP_AUTO" "$TARGET_FILE" 2>/dev/null || {
-        echo "sync-allow-lists: не удалось обновить $TARGET_FILE" >&2
+        log "sync-allow-lists: не удалось обновить $TARGET_FILE"
         FAIL_COUNT=$((FAIL_COUNT + 1))
         continue
     }
@@ -418,10 +425,13 @@ for entry in $LISTS; do
         [ -n "$out" ] && REMOVED_LIST_SUFFIX=" [$out]"
     fi
 
-    echo "${OUT_NAME}: added ${ADDED_COUNT}${ADDED_LIST_SUFFIX}, removed ${REMOVED_COUNT}${REMOVED_LIST_SUFFIX}"
+    log "${OUT_NAME}: added ${ADDED_COUNT}${ADDED_LIST_SUFFIX}, removed ${REMOVED_COUNT}${REMOVED_LIST_SUFFIX}"
 done
 
-[ "$FAIL_COUNT" -gt 0 ] && exit 1
+if [ "$FAIL_COUNT" -gt 0 ]; then
+    log "=== sync-allow-lists finished $(date '+%Y-%m-%d %H:%M:%S') (errors: $FAIL_COUNT) ==="
+    exit 1
+fi
 
 # После успешной синхронизации обновляем ipset/dnsmasq из списков (nonbypass, bypass)
 # Порядок: sync-allow-lists.sh → process-hosts.sh. Альтернатива: cron/init.d вызывает оба по очереди.
@@ -430,4 +440,5 @@ if [ -x "$PROCESS_HOSTS_SCRIPT" ] || [ -f "$PROCESS_HOSTS_SCRIPT" ]; then
     LISTS_BASE="${LISTS_BASE}" sh "$PROCESS_HOSTS_SCRIPT" || true
 fi
 
+log "=== sync-allow-lists finished $(date '+%Y-%m-%d %H:%M:%S') ==="
 exit 0
