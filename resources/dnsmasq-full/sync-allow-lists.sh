@@ -5,6 +5,161 @@
 
 PATH=/opt/sbin:/opt/bin:/opt/usr/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
+SYNC_SCRIPT_PATH="${SYNC_SCRIPT_PATH:-/opt/etc/allow/dnsmasq-full/sync-allow-lists.sh}"
+CRON_EXPR="0 4 * * *"
+
+# Обработка autoupdate status|enable|disable
+case "${1:-}" in
+    autoupdate)
+        case "${2:-}" in
+            status)
+                autoupdate_status=1
+                ;;
+            enable)
+                autoupdate_enable=1
+                ;;
+            disable)
+                autoupdate_disable=1
+                ;;
+            *)
+                echo "Usage: $0 autoupdate status|enable|disable" >&2
+                exit 1
+                ;;
+        esac
+        ;;
+esac
+
+if [ -n "${autoupdate_status:-}" ] || [ -n "${autoupdate_enable:-}" ] || [ -n "${autoupdate_disable:-}" ]; then
+    ensure_cron_spool_dirs() {
+        if command -v crontab >/dev/null 2>&1; then
+            mkdir -p /opt/var/spool/cron/crontabs 2>/dev/null || true
+            chmod 700 /opt/var/spool/cron 2>/dev/null || true
+            chmod 700 /opt/var/spool/cron/crontabs 2>/dev/null || true
+            if [ ! -f /opt/var/spool/cron/crontabs/root ]; then
+                : > /opt/var/spool/cron/crontabs/root 2>/dev/null || true
+                chmod 600 /opt/var/spool/cron/crontabs/root 2>/dev/null || true
+            fi
+        fi
+    }
+    ensure_crond_running() {
+        if command -v crond >/dev/null 2>&1; then
+            ps w 2>/dev/null | grep -q "[c]rond" && return 0
+            crond -c /opt/var/spool/cron/crontabs 2>/dev/null || crond 2>/dev/null || true
+        fi
+    }
+    ensure_newline_at_eof() {
+        [ -f "$1" ] || return 0
+        LAST_CHAR="$(tail -c 1 "$1" 2>/dev/null || true)"
+        [ -z "$LAST_CHAR" ] || printf '\n' >>"$1" 2>/dev/null || true
+    }
+    cron_status() {
+        if command -v crontab >/dev/null 2>&1; then
+            if crontab -l 2>/dev/null | grep -Fq "${SYNC_SCRIPT_PATH}"; then
+                echo "autoupdate: включено (cron 04:00)"
+                return 0
+            fi
+        fi
+        if [ -f "/opt/etc/crontabs/root" ] && grep -Fq "${SYNC_SCRIPT_PATH}" /opt/etc/crontabs/root 2>/dev/null; then
+            echo "autoupdate: включено (cron 04:00)"
+            return 0
+        fi
+        echo "autoupdate: выключено"
+        return 1
+    }
+    cron_add_entry() {
+        cron_status >/dev/null 2>&1 && {
+            echo "autoupdate: уже включено (cron 04:00)"
+            return 0
+        }
+        ENTRY="${CRON_EXPR} ${SYNC_SCRIPT_PATH} >/dev/null 2>&1"
+        if command -v crontab >/dev/null 2>&1; then
+            ensure_cron_spool_dirs
+            TMP="/tmp/allow-sync-cron.$$"
+            crontab -l 2>/dev/null >"$TMP" || : >"$TMP"
+            if grep -Fq "${SYNC_SCRIPT_PATH}" "$TMP" 2>/dev/null; then
+                echo "autoupdate: уже включено (cron 04:00)"
+                rm -f "$TMP" 2>/dev/null || true
+                return 0
+            fi
+            ensure_newline_at_eof "$TMP"
+            echo "$ENTRY" >>"$TMP"
+            if crontab "$TMP" 2>/dev/null; then
+                ensure_crond_running
+                echo "autoupdate: включено (cron 04:00)"
+                rm -f "$TMP" 2>/dev/null || true
+                return 0
+            fi
+            echo "autoupdate: не удалось применить crontab" >&2
+            rm -f "$TMP" 2>/dev/null || true
+            return 1
+        fi
+        if [ -d "/opt/etc/crontabs" ]; then
+            CRONFILE="/opt/etc/crontabs/root"
+            touch "$CRONFILE" 2>/dev/null || true
+            if grep -Fq "${SYNC_SCRIPT_PATH}" "$CRONFILE" 2>/dev/null; then
+                echo "autoupdate: уже включено (cron 04:00)"
+                return 0
+            fi
+            ensure_newline_at_eof "$CRONFILE"
+            echo "$ENTRY" >>"$CRONFILE"
+            echo "autoupdate: включено (cron 04:00)"
+            return 0
+        fi
+        echo "autoupdate: cron не найден" >&2
+        return 1
+    }
+    cron_remove_entry() {
+        if command -v crontab >/dev/null 2>&1; then
+            ensure_cron_spool_dirs
+            TMP="/tmp/allow-sync-cron.$$"
+            TMP2="/tmp/allow-sync-cron.$$.new"
+            crontab -l 2>/dev/null >"$TMP" || : >"$TMP"
+            if ! grep -Fq "${SYNC_SCRIPT_PATH}" "$TMP" 2>/dev/null; then
+                echo "autoupdate: выключено (запись отсутствовала)"
+                rm -f "$TMP" "$TMP2" 2>/dev/null || true
+                return 0
+            fi
+            grep -Fv "${SYNC_SCRIPT_PATH}" "$TMP" >"$TMP2" 2>/dev/null || : >"$TMP2"
+            ensure_newline_at_eof "$TMP2"
+            if crontab "$TMP2" 2>/dev/null; then
+                ensure_crond_running
+                echo "autoupdate: выключено"
+                rm -f "$TMP" "$TMP2" 2>/dev/null || true
+                return 0
+            fi
+            echo "autoupdate: не удалось применить crontab при удалении" >&2
+            rm -f "$TMP" "$TMP2" 2>/dev/null || true
+            return 1
+        fi
+        if [ -f "/opt/etc/crontabs/root" ]; then
+            CRONFILE="/opt/etc/crontabs/root"
+            if ! grep -Fq "${SYNC_SCRIPT_PATH}" "$CRONFILE" 2>/dev/null; then
+                echo "autoupdate: выключено (запись отсутствовала)"
+                return 0
+            fi
+            TMP="/tmp/allow-sync-cron.$$"
+            grep -Fv "${SYNC_SCRIPT_PATH}" "$CRONFILE" >"$TMP" 2>/dev/null || : >"$TMP"
+            ensure_newline_at_eof "$TMP"
+            cat "$TMP" >"$CRONFILE" 2>/dev/null || true
+            rm -f "$TMP" 2>/dev/null || true
+            echo "autoupdate: выключено"
+            return 0
+        fi
+        echo "autoupdate: выключено (cron не найден)"
+        return 0
+    }
+    if [ -n "${autoupdate_status:-}" ]; then
+        cron_status
+        exit $?
+    elif [ -n "${autoupdate_enable:-}" ]; then
+        cron_add_entry
+        exit $?
+    else
+        cron_remove_entry
+        exit $?
+    fi
+fi
+
 SYNC_LOG="${SYNC_LOG:-/opt/var/log/allow/sync-allow-lists.log}"
 log() { printf '%s\n' "$*"; printf '%s\n' "$*" >> "$SYNC_LOG" 2>/dev/null || true; }
 
@@ -64,6 +219,7 @@ mkdir -p "$TMP_DIR" 2>/dev/null || true
 FAIL_COUNT=0
 
 log "=== sync-allow-lists started $(date '+%Y-%m-%d %H:%M:%S') ==="
+log ""
 
 # Russian-services: extra из репо Vovanp70/Allow, обрабатывается первым, по умолчанию в nonbypass
 EXTRA_RUS_URL="${EXTRA_REPO_URL}/Russian-services.txt"
@@ -184,9 +340,11 @@ if curl -sfL -o "$TMP_EXTRA" "$EXTRA_RUS_URL" 2>/dev/null; then
             done < "$TMP_REMOVED_LIST"
             [ -n "$out" ] && REMOVED_LIST_SUFFIX=" [$out]"
         fi
-        log "${RUS_SERVICES_OUT_NAME}: added ${ADDED_COUNT}${ADDED_LIST_SUFFIX}, removed ${REMOVED_COUNT}${REMOVED_LIST_SUFFIX}"
+        log "  ${RUS_SERVICES_OUT_NAME}:"
+        log "    added: ${ADDED_COUNT}${ADDED_LIST_SUFFIX}"
+        log "    removed: ${REMOVED_COUNT}${REMOVED_LIST_SUFFIX}"
     else
-        log "sync-allow-lists: не удалось обновить $TARGET_FILE"
+        log "  [ERROR] не удалось обновить $TARGET_FILE"
         FAIL_COUNT=$((FAIL_COUNT + 1))
     fi
 fi
@@ -198,7 +356,7 @@ for entry in $LISTS; do
 
     # 2. Скачивание remote в временный файл
     if ! curl -sfL -o "$TMP_REMOTE" "$LIST_URL" 2>/dev/null; then
-        log "sync-allow-lists: ошибка загрузки $LIST_URL"
+        log "  [ERROR] ошибка загрузки: $LIST_URL"
         FAIL_COUNT=$((FAIL_COUNT + 1))
         # Не трогаем соответствующий auto‑файл при ошибке источника
         continue
@@ -386,7 +544,7 @@ for entry in $LISTS; do
         : > "$TMP_AUTO"
     fi
     mv "$TMP_AUTO" "$TARGET_FILE" 2>/dev/null || {
-        log "sync-allow-lists: не удалось обновить $TARGET_FILE"
+        log "  [ERROR] не удалось обновить $TARGET_FILE"
         FAIL_COUNT=$((FAIL_COUNT + 1))
         continue
     }
@@ -425,8 +583,12 @@ for entry in $LISTS; do
         [ -n "$out" ] && REMOVED_LIST_SUFFIX=" [$out]"
     fi
 
-    log "${OUT_NAME}: added ${ADDED_COUNT}${ADDED_LIST_SUFFIX}, removed ${REMOVED_COUNT}${REMOVED_LIST_SUFFIX}"
+    log "  ${OUT_NAME}:"
+    log "    added: ${ADDED_COUNT}${ADDED_LIST_SUFFIX}"
+    log "    removed: ${REMOVED_COUNT}${REMOVED_LIST_SUFFIX}"
 done
+
+log ""
 
 if [ "$FAIL_COUNT" -gt 0 ]; then
     log "=== sync-allow-lists finished $(date '+%Y-%m-%d %H:%M:%S') (errors: $FAIL_COUNT) ==="
@@ -440,5 +602,6 @@ if [ -x "$PROCESS_HOSTS_SCRIPT" ] || [ -f "$PROCESS_HOSTS_SCRIPT" ]; then
     LISTS_BASE="${LISTS_BASE}" sh "$PROCESS_HOSTS_SCRIPT" || true
 fi
 
+log ""
 log "=== sync-allow-lists finished $(date '+%Y-%m-%d %H:%M:%S') ==="
 exit 0

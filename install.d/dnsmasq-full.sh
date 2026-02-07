@@ -469,8 +469,20 @@ install_dnsmasq_full() {
             else
                 log "sync-allow-lists.sh завершился с ошибкой (например, нет сети), продолжаю установку."
             fi
+            log "Включаю автообновление списков (cron 04:00)..."
+            if sh "${CONF_DIR}/sync-allow-lists.sh" autoupdate enable >>"$LOG_FILE" 2>&1; then
+                log_success "Автообновление включено."
+            else
+                log "Не удалось настроить cron для автообновления, продолжаю."
+            fi
         else
             log "Экземпляр family: sync-allow-lists.sh уже выполнен при установке main, пропускаю."
+            log "Включаю автообновление списков (cron 04:00)..."
+            if sh "${CONF_DIR}/sync-allow-lists.sh" autoupdate enable >>"$LOG_FILE" 2>&1; then
+                log_success "Автообновление включено."
+            else
+                log "Не удалось настроить cron для автообновления, продолжаю."
+            fi
         fi
     fi
 

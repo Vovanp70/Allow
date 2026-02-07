@@ -163,14 +163,77 @@ function onChildrenFilterChange() {
     updateSaveButton();
 }
 
+// --- Обновления (sync-allow-lists) ---
+
+async function loadSyncAllowStatus() {
+    const toggleEl = document.getElementById('sync-allow-autoupdate-toggle');
+    const statusEl = document.getElementById('sync-allow-autoupdate-status');
+    const lastUpdateEl = document.getElementById('sync-allow-last-update');
+    if (!toggleEl && !statusEl && !lastUpdateEl) return;
+    try {
+        const data = await apiRequest('/sync-allow-lists/status');
+        if (toggleEl) {
+            toggleEl.checked = !!(data && data.enabled === true);
+        }
+        if (statusEl) {
+            statusEl.textContent = (data && data.enabled === true) ? 'включено' : 'выключено';
+        }
+        if (lastUpdateEl) {
+            lastUpdateEl.textContent = (data && data.last_update) ? data.last_update : '—';
+        }
+    } catch (err) {
+        if (statusEl) statusEl.textContent = 'ошибка';
+        if (lastUpdateEl) lastUpdateEl.textContent = '—';
+    }
+}
+
+async function onSyncAllowAutoupdateChange() {
+    const toggleEl = document.getElementById('sync-allow-autoupdate-toggle');
+    if (!toggleEl) return;
+    try {
+        await apiRequest('/sync-allow-lists/autoupdate', 'POST', { enabled: toggleEl.checked });
+        await loadSyncAllowStatus();
+        if (typeof showToast === 'function') showToast(toggleEl.checked ? 'Автообновление включено' : 'Автообновление выключено');
+    } catch (err) {
+        if (typeof showToast === 'function') showToast(err.message || 'Ошибка', 4000);
+        loadSyncAllowStatus();
+    }
+}
+
+async function syncAllowRun() {
+    const btnEl = document.getElementById('sync-allow-update-btn');
+    if (btnEl) btnEl.disabled = true;
+    try {
+        await apiRequest('/sync-allow-lists/run', 'POST');
+        if (typeof showToast === 'function') showToast('Обновление запущено');
+        setTimeout(loadSyncAllowStatus, 2500);
+    } catch (err) {
+        if (typeof showToast === 'function') showToast(err.message || 'Ошибка', 4000);
+    } finally {
+        if (btnEl) btnEl.disabled = false;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     bindCardClicks();
     loadCurrentMode();
     loadChildrenFilterStatus();
+    loadSyncAllowStatus();
 
     const saveBtn = document.getElementById('settings-save-btn');
     if (saveBtn) saveBtn.addEventListener('click', saveAllSettings);
 
     const childrenToggle = document.getElementById('children-filter-toggle');
     if (childrenToggle) childrenToggle.addEventListener('change', onChildrenFilterChange);
+
+    const syncAllowUpdateBtn = document.getElementById('sync-allow-update-btn');
+    if (syncAllowUpdateBtn) syncAllowUpdateBtn.addEventListener('click', syncAllowRun);
+
+    const syncAllowAutoupdateToggle = document.getElementById('sync-allow-autoupdate-toggle');
+    if (syncAllowAutoupdateToggle) syncAllowAutoupdateToggle.addEventListener('change', onSyncAllowAutoupdateChange);
+
+    const syncAllowLogsBtn = document.getElementById('sync-allow-logs-btn');
+    if (syncAllowLogsBtn) syncAllowLogsBtn.addEventListener('click', function () {
+        if (typeof openLogsViewer === 'function') openLogsViewer('Логи обновления списков', '/sync-allow-lists/logs');
+    });
 });

@@ -109,6 +109,34 @@
     </section>
 
     <section class="settings-section">
+        <h2 class="settings-section-title">Обновления</h2>
+        <p class="settings-section-desc">Синхронизация списков allow (домены, подсети) из upstream и extra-репозитория. Автообновление по cron в 04:00.</p>
+        <div class="card settings-card">
+            <div class="card-content">
+                <div class="settings-card-row">
+                    <span class="settings-card-label">Обновить списки</span>
+                    <button type="button" class="btn btn-secondary" id="sync-allow-update-btn">Обновить</button>
+                </div>
+                <div class="settings-card-row">
+                    <span class="settings-card-label">Автообновление (cron 04:00)</span>
+                    <label class="switch">
+                        <input type="checkbox" id="sync-allow-autoupdate-toggle">
+                        <span class="slider"></span>
+                    </label>
+                    <span id="sync-allow-autoupdate-status" class="settings-card-hint">—</span>
+                </div>
+                <div class="settings-card-row">
+                    <span class="settings-card-label">Последнее обновление</span>
+                    <span id="sync-allow-last-update">—</span>
+                </div>
+                <div class="settings-card-row">
+                    <button type="button" class="btn btn-secondary" id="sync-allow-logs-btn">Посмотреть логи</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="settings-section">
         <h2 class="settings-section-title">Sing-box: прокси (outbound'ы)</h2>
         <p class="settings-section-desc">Список прокси из конфига Sing-box (до 10). Конвертация в ссылки и обратно: <a href="https://github.com/4n0nymou3/proxy-to-singbox-converter" target="_blank" rel="noopener">proxy-to-singbox-converter</a> (MIT). Изменения применятся после нажатия «Сохранить».</p>
         <div class="card">

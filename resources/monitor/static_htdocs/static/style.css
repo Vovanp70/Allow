@@ -1271,6 +1271,12 @@ a.menu-item {
     color: #1d1d1f;
 }
 
+.settings-card-hint {
+    margin-left: 8px;
+    font-size: 14px;
+    color: #6e6e73;
+}
+
 .settings-singbox-import {
     margin-top: 16px;
 }

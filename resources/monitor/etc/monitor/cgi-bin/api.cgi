@@ -21,6 +21,8 @@ DNSMASQ_FAMILY_CONF="/opt/etc/allow/dnsmasq-full/dnsmasq-family.conf"
 STUBBY_LOG="/opt/var/log/allow/stubby.log"
 STUBBY_FAMILY_LOG="/opt/var/log/allow/stubby-family.log"
 SINGBOX_LOG="/opt/var/log/allow/sing-box/sing-box.log"
+SYNC_ALLOW_LOG="/opt/var/log/allow/sync-allow-lists.log"
+SYNC_SCRIPT="/opt/etc/allow/dnsmasq-full/sync-allow-lists.sh"
 
 export ETC_ALLOW
 
@@ -209,6 +211,69 @@ route_children_filter_post() {
     _msg_esc="$(json_esc "$_msg")"
     cgi_header
     printf '{"success":true,"message":"%s"}\n' "$_msg_esc"
+}
+
+# --- /sync-allow-lists/status GET ---
+route_sync_allow_status() {
+    enabled="false"
+    last_update="null"
+    if [ -x "$SYNC_SCRIPT" ]; then
+        _out="$(sh "$SYNC_SCRIPT" autoupdate status 2>/dev/null)" || true
+        echo "$_out" | grep -q "включено" && enabled="true"
+    fi
+    if [ -f "$SYNC_ALLOW_LOG" ]; then
+        _line="$(grep "sync-allow-lists finished" "$SYNC_ALLOW_LOG" 2>/dev/null | tail -1)"
+        if [ -n "$_line" ]; then
+            _dt="$(echo "$_line" | sed -n 's/.*finished \([0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\} [0-9]\{2\}:[0-9]\{2\}:[0-9]\{2\}\).*/\1/p')"
+            [ -n "$_dt" ] && last_update="\"$(json_esc "$_dt")\""
+        fi
+    fi
+    cgi_header
+    printf '{"enabled":%s,"last_update":%s}\n' "$enabled" "$last_update"
+}
+
+# --- /sync-allow-lists/autoupdate POST ---
+route_sync_allow_autoupdate_post() {
+    _body="$1"
+    _enabled="false"
+    echo "$_body" | grep -q '"enabled"[[:space:]]*:[[:space:]]*true' && _enabled="true"
+    [ ! -x "$SYNC_SCRIPT" ] && status_header 503 && cgi_header && printf '{"success":false,"message":"sync-allow-lists.sh not found"}\n' && return 0
+    if [ "$_enabled" = "true" ]; then
+        sh "$SYNC_SCRIPT" autoupdate enable >/dev/null 2>&1 || true
+    else
+        sh "$SYNC_SCRIPT" autoupdate disable >/dev/null 2>&1 || true
+    fi
+    cgi_header
+    printf '{"success":true}\n'
+}
+
+# --- /sync-allow-lists/run POST ---
+route_sync_allow_run() {
+    [ ! -x "$SYNC_SCRIPT" ] && status_header 503 && cgi_header && printf '{"success":false,"message":"sync-allow-lists.sh not found"}\n' && return 0
+    (nohup sh "$SYNC_SCRIPT" >/dev/null 2>&1 &) 2>/dev/null || true
+    _msg_esc="$(json_esc "Обновление запущено")"
+    cgi_header
+    printf '{"success":true,"message":"%s"}\n' "$_msg_esc"
+}
+
+# --- /sync-allow-lists/logs GET ---
+route_sync_allow_logs() {
+    lines="$(get_query_lines)"
+    cgi_header
+    if [ ! -f "$SYNC_ALLOW_LOG" ] || [ ! -s "$SYNC_ALLOW_LOG" ]; then
+        printf '{"logs":[],"message":"Логи пусты"}\n'
+        return 0
+    fi
+    if command -v jq >/dev/null 2>&1; then
+        tail -n "$lines" "$SYNC_ALLOW_LOG" 2>/dev/null | jq -R . | jq -s '{logs: .}'
+    else
+        tail -n "$lines" "$SYNC_ALLOW_LOG" 2>/dev/null | awk '
+            BEGIN { printf "{\"logs\":["; first=1 }
+            function json_esc(s) { gsub(/\\/,"\\\\",s); gsub(/"/,"\\\"",s); gsub(/\t/,"\\t",s); gsub(/\r/,"\\r",s); gsub(/\n/,"\\n",s); return s }
+            { s=json_esc($0); if (!first) printf ","; first=0; printf "\""; printf "%s", s; printf "\"" }
+            END { printf "]}\n" }
+        '
+    fi
 }
 
 # --- /stubby/status GET ---
@@ -1289,6 +1354,10 @@ main() {
         system/info) path="/system/info" ;;
         dns-mode)    path="/dns-mode" ;;
         settings/children-filter) path="/settings/children-filter" ;;
+        sync-allow-lists/status) path="/sync-allow-lists/status" ;;
+        sync-allow-lists/autoupdate) path="/sync-allow-lists/autoupdate" ;;
+        sync-allow-lists/run) path="/sync-allow-lists/run" ;;
+        sync-allow-lists/logs) path="/sync-allow-lists/logs" ;;
         stubby/status)  path="/stubby/status" ;;
         stubby/start)   path="/stubby/start" ;;
         stubby/stop)    path="/stubby/stop" ;;
@@ -1364,6 +1433,18 @@ main() {
             else
                 json_404
             fi
+            ;;
+        /sync-allow-lists/status)
+            [ "$REQUEST_METHOD" = "GET" ] && route_sync_allow_status || json_404
+            ;;
+        /sync-allow-lists/autoupdate)
+            [ "$REQUEST_METHOD" = "POST" ] && route_sync_allow_autoupdate_post "$body" || json_404
+            ;;
+        /sync-allow-lists/run)
+            [ "$REQUEST_METHOD" = "POST" ] && route_sync_allow_run || json_404
+            ;;
+        /sync-allow-lists/logs)
+            [ "$REQUEST_METHOD" = "GET" ] && route_sync_allow_logs || json_404
             ;;
         /stubby/status)
             [ "$REQUEST_METHOD" = "GET" ] && route_stubby_status || json_404
