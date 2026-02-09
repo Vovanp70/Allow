@@ -380,8 +380,7 @@ function initSingboxPage() {
     }
     const routeByMarkSelect = document.getElementById('singbox-route-by-mark-select');
     if (routeByMarkSelect) {
-        loadRouteByMarkMarks();
-        loadRouteByMarkStatus();
+        loadRouteByMarkMarks().then(function () { return loadRouteByMarkStatus(); });
     }
 }
 if (document.readyState === 'loading') {
