@@ -242,17 +242,38 @@ async function loadRouteByMarkMarks() {
 
 async function loadRouteByMarkStatus() {
     const statusEl = document.getElementById('singbox-route-by-mark-status');
-    if (!statusEl) return;
+    const enableBtn = document.getElementById('singbox-route-by-mark-enable-btn');
+    const disableBtn = document.getElementById('singbox-route-by-mark-disable-btn');
+    const selectEl = document.getElementById('singbox-route-by-mark-select');
+    if (statusEl) statusEl.textContent = '';
     try {
         const data = await apiRequest('/singbox/route-by-mark/status');
         const current = (data.current_mark || '').trim();
-        if (!current || current === 'nomark') {
-            statusEl.textContent = 'Выключено';
-        } else {
-            statusEl.textContent = 'Включено: ' + current;
+        const enabled = current && current !== 'nomark';
+        if (enableBtn) enableBtn.style.display = enabled ? 'none' : '';
+        if (disableBtn) disableBtn.style.display = enabled ? '' : 'none';
+        if (selectEl) {
+            selectEl.style.display = '';
+            if (enabled && current) {
+                if (!Array.prototype.find.call(selectEl.options, function (o) { return o.value === current; })) {
+                    const opt = document.createElement('option');
+                    opt.value = current;
+                    opt.textContent = current;
+                    selectEl.appendChild(opt);
+                }
+                selectEl.value = current;
+                selectEl.classList.add('route-by-mark-selected');
+            } else {
+                selectEl.classList.remove('route-by-mark-selected');
+            }
         }
     } catch (e) {
-        statusEl.textContent = '';
+        if (enableBtn) enableBtn.style.display = '';
+        if (disableBtn) disableBtn.style.display = '';
+        if (selectEl) {
+            selectEl.style.display = '';
+            selectEl.classList.remove('route-by-mark-selected');
+        }
     }
 }
 

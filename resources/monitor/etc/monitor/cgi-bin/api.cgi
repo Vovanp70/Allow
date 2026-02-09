@@ -802,11 +802,16 @@ route_singbox_route_by_mark_post() {
         return 0
     fi
     cgi_header
-    _out_esc="$(json_esc "$_out")"
-    if [ "$_ret" = 0 ]; then
-        printf '{"success":true,"message":"%s","output":"%s"}\n' "$_out_esc" "$_out_esc"
+    if command -v jq >/dev/null 2>&1; then
+        _out_esc="$(printf '%s' "$_out" | jq -Rs .)"
     else
-        printf '{"success":false,"error":"%s","output":"%s"}\n' "$_out_esc" "$_out_esc"
+        _out_esc="$(json_esc "$_out")"
+        _out_esc="\"$_out_esc\""
+    fi
+    if [ "$_ret" = 0 ]; then
+        printf '{"success":true,"message":%s,"output":%s}\n' "$_out_esc" "$_out_esc"
+    else
+        printf '{"success":false,"error":%s,"output":%s}\n' "$_out_esc" "$_out_esc"
     fi
 }
 

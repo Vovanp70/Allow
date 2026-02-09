@@ -545,6 +545,13 @@ header {
     cursor: not-allowed;
 }
 
+/* Подсветка выбранной марки (как выбранная карточка DoT на settings) */
+#singbox-route-by-mark-select.route-by-mark-selected {
+    border-color: #007aff;
+    background-color: rgba(0, 122, 255, 0.06);
+    box-shadow: 0 4px 16px rgba(0, 122, 255, 0.2);
+}
+
 /* Toggle switch в форме */
 .form-row > .switch {
     flex: 0 0 auto;
