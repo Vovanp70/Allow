@@ -25,7 +25,9 @@ fi
 cd "$WORK_DIR" || { echo "[ALLOW] Ошибка: нет доступа к $WORK_DIR" >&2; exit 1; }
 rm -rf allow Allow-main
 
-if ! curl -sL "${REPO_URL}/archive/refs/heads/main.tar.gz" | tar xz; then
+# Запрос архива: ?t=... обходит кэш CDN (после push с main иногда отдают старый архив)
+ARCHIVE_URL="${REPO_URL}/archive/refs/heads/main.tar.gz?t=$(date +%s)"
+if ! curl -sL -H "Cache-Control: no-cache" -H "Pragma: no-cache" "$ARCHIVE_URL" | tar xz; then
     echo "[ALLOW] Ошибка: не удалось скачать или распаковать архив." >&2
     exit 1
 fi
