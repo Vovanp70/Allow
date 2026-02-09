@@ -738,6 +738,23 @@ route_singbox_route_by_mark_marks() {
     printf '{"marks":[%s]}\n' "$_json_marks"
 }
 
+# --- /singbox/route-by-mark/iptables-rules GET (полный вывод iptables-save | grep MARK) ---
+route_singbox_route_by_mark_iptables_rules() {
+    _out="$(iptables-save 2>/dev/null | grep MARK)" || true
+    [ -z "$_out" ] && _out="(пусто или команда недоступна)"
+    _json_lines=""
+    _first=1
+    while IFS= read -r _line; do
+        _esc="$(json_esc "$_line")"
+        [ "$_first" = 1 ] && _first=0 || _json_lines="${_json_lines},"
+        _json_lines="${_json_lines}\"${_esc}\""
+    done <<EOF
+$_out
+EOF
+    cgi_header
+    printf '{"lines":[%s]}\n' "$_json_lines"
+}
+
 # --- /singbox/route-by-mark/status GET (текущая активная марка из route-by-mark.state) ---
 ROUTE_BY_MARK_STATE="/opt/var/run/allow/route-by-mark.state"
 route_singbox_route_by_mark_status() {
@@ -1477,9 +1494,10 @@ main() {
         singbox/logs/size)  path="/singbox/logs/size" ;;
         singbox/logs/clear) path="/singbox/logs/clear" ;;
         singbox/logging) path="/singbox/logging" ;;
-        singbox/route-by-mark/marks)  path="/singbox/route-by-mark/marks" ;;
-        singbox/route-by-mark/status) path="/singbox/route-by-mark/status" ;;
-        singbox/route-by-mark)        path="/singbox/route-by-mark" ;;
+        singbox/route-by-mark/marks)         path="/singbox/route-by-mark/marks" ;;
+        singbox/route-by-mark/status)        path="/singbox/route-by-mark/status" ;;
+        singbox/route-by-mark/iptables-rules) path="/singbox/route-by-mark/iptables-rules" ;;
+        singbox/route-by-mark)              path="/singbox/route-by-mark" ;;
         *)           path="/unknown" ;;
     esac
     # #region agent log
@@ -1683,6 +1701,9 @@ main() {
             ;;
         /singbox/route-by-mark/status)
             [ "$REQUEST_METHOD" = "GET" ] && route_singbox_route_by_mark_status || json_404
+            ;;
+        /singbox/route-by-mark/iptables-rules)
+            [ "$REQUEST_METHOD" = "GET" ] && route_singbox_route_by_mark_iptables_rules || json_404
             ;;
         /singbox/route-by-mark)
             [ "$REQUEST_METHOD" = "POST" ] && route_singbox_route_by_mark_post "$body" || json_404

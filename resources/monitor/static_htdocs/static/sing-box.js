@@ -319,6 +319,36 @@ async function routeByMarkDisable() {
 window.routeByMarkEnable = routeByMarkEnable;
 window.routeByMarkDisable = routeByMarkDisable;
 
+function openMarkRulesModal() {
+    const modal = document.getElementById('markRulesModal');
+    if (modal) {
+        modal.style.display = 'block';
+        loadMarkRulesModal();
+    }
+}
+
+function closeMarkRulesModal() {
+    const modal = document.getElementById('markRulesModal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function loadMarkRulesModal() {
+    const textEl = document.getElementById('markRulesModalText');
+    if (!textEl) return;
+    textEl.value = 'Загрузка...';
+    try {
+        const data = await apiRequest('/singbox/route-by-mark/iptables-rules');
+        const lines = Array.isArray(data.lines) ? data.lines : [];
+        textEl.value = lines.length ? lines.join('\n') : (data.output || '(пусто)');
+    } catch (e) {
+        textEl.value = 'Ошибка: ' + (e.message || 'не удалось загрузить');
+    }
+}
+
+window.openMarkRulesModal = openMarkRulesModal;
+window.closeMarkRulesModal = closeMarkRulesModal;
+window.loadMarkRulesModal = loadMarkRulesModal;
+
 // Вызов при загрузке страницы (дашборд или страница Sing-box)
 function initSingboxPage() {
     loadSingboxStatus();
