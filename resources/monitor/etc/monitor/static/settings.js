@@ -123,15 +123,24 @@ async function saveAllSettings() {
             childrenFilterDirty = false;
         }
 
+        let singboxRestarted = false;
         if (typeof window.saveSingboxDraft === 'function') {
+            const hadSingboxChanges = typeof window.isSingboxDirty === 'function' && window.isSingboxDirty();
             const result = await window.saveSingboxDraft();
             if (result && result.success !== true && typeof showToast === 'function') {
                 showToast(result.error || 'Ошибка сохранения конфига Sing-box', 4000);
+            } else if (result && result.success === true && hadSingboxChanges) {
+                try {
+                    await apiRequest('/singbox/restart', 'POST');
+                    singboxRestarted = true;
+                } catch (e) {
+                    if (typeof showToast === 'function') showToast('Ошибка перезапуска Sing-box: ' + (e.message || e), 4000);
+                }
             }
         }
 
         if (typeof hideProgress === 'function') hideProgress();
-        if (typeof showToast === 'function') showToast('Настройки сохранены');
+        if (typeof showToast === 'function') showToast(singboxRestarted ? 'Настройки сохранены. Sing-box перезапущен.' : 'Настройки сохранены');
     } catch (err) {
         if (typeof hideProgress === 'function') hideProgress();
         if (typeof showToast === 'function') showToast(err.message || 'Ошибка сохранения', 4000);
