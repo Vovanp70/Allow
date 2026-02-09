@@ -717,6 +717,82 @@ route_stubby_autostart() { route_autostart_post "stubby" "$1"; }
 route_stubby_family_autostart() { route_autostart_post "stubby-family" "$1"; }
 route_singbox_autostart() { route_autostart_post "sing-box" "$1"; }
 
+# --- /singbox/route-by-mark/marks GET (список mark из iptables-save | grep MARK) ---
+route_singbox_route_by_mark_marks() {
+    _marks=""
+    _raw="$(iptables-save 2>/dev/null | grep MARK)" || true
+    _marks="$(echo "$_raw" | sed -n 's/.*--set-xmark \(0x[0-9a-fA-F][0-9a-fA-F]*\)\/.*/\1/p'; echo "$_raw" | sed -n 's/.*--set-xndmmark \(0x[0-9a-fA-F][0-9a-fA-F]*\)\/.*/\1/p')"
+    _marks="$(echo "$_marks" | grep -E '^0x[0-9a-fA-F]+$' | sort -u)"
+    _json_marks=""
+    _first=1
+    for _m in $_marks; do
+        [ -z "$_m" ] && continue
+        if [ "$_first" = 1 ]; then
+            _json_marks="\"$(json_esc "$_m")\""
+            _first=0
+        else
+            _json_marks="${_json_marks},\"$(json_esc "$_m")\""
+        fi
+    done
+    cgi_header
+    printf '{"marks":[%s]}\n' "$_json_marks"
+}
+
+# --- /singbox/route-by-mark/status GET (текущая активная марка из route-by-mark.state) ---
+ROUTE_BY_MARK_STATE="/opt/var/run/allow/route-by-mark.state"
+route_singbox_route_by_mark_status() {
+    _current="nomark"
+    if [ -f "$ROUTE_BY_MARK_STATE" ]; then
+        _line="$(grep '^MARK=' "$ROUTE_BY_MARK_STATE" 2>/dev/null | head -1)"
+        [ -n "$_line" ] && _current="${_line#MARK=}"
+    fi
+    [ -z "$_current" ] && _current="nomark"
+    cgi_header
+    printf '{"current_mark":"%s"}\n' "$(json_esc "$_current")"
+}
+
+# --- /singbox/route-by-mark POST (addmark <mark> | delmark) ---
+route_singbox_route_by_mark_post() {
+    ROUTE_BY_MARK_SCRIPT="${ETC_ALLOW}/route-by-mark.sh"
+    [ ! -x "$ROUTE_BY_MARK_SCRIPT" ] && [ -x "${ETC_ALLOW}/markalltovpn/route-by-mark.sh" ] && ROUTE_BY_MARK_SCRIPT="${ETC_ALLOW}/markalltovpn/route-by-mark.sh"
+    [ ! -x "$ROUTE_BY_MARK_SCRIPT" ] && [ -f "${ETC_ALLOW}/markalltovpn/route-by-mark.sh" ] && ROUTE_BY_MARK_SCRIPT="${ETC_ALLOW}/markalltovpn/route-by-mark.sh"
+    if [ ! -f "$ROUTE_BY_MARK_SCRIPT" ]; then
+        status_header 503
+        cgi_header
+        printf '{"success":false,"error":"route-by-mark.sh not found"}\n'
+        return 0
+    fi
+    _body="$(echo "$body" | tr -d '\n\r')"
+    _action="$(echo "$_body" | sed -n 's/.*"action"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+    _mark="$(echo "$_body" | sed -n 's/.*"mark"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+    _out=""
+    if [ "$_action" = "addmark" ]; then
+        if [ -z "$_mark" ]; then
+            status_header 400
+            cgi_header
+            printf '{"success":false,"error":"mark required for addmark"}\n'
+            return 0
+        fi
+        _out="$("$ROUTE_BY_MARK_SCRIPT" addmark "$_mark" 2>&1)"
+        _ret=$?
+    elif [ "$_action" = "delmark" ]; then
+        _out="$("$ROUTE_BY_MARK_SCRIPT" delmark 2>&1)"
+        _ret=$?
+    else
+        status_header 400
+        cgi_header
+        printf '{"success":false,"error":"action must be addmark or delmark"}\n'
+        return 0
+    fi
+    cgi_header
+    _out_esc="$(json_esc "$_out")"
+    if [ "$_ret" = 0 ]; then
+        printf '{"success":true,"message":"%s","output":"%s"}\n' "$_out_esc" "$_out_esc"
+    else
+        printf '{"success":false,"error":"%s","output":"%s"}\n' "$_out_esc" "$_out_esc"
+    fi
+}
+
 # --- /dnsmasq-family/status GET ---
 route_dnsmasq_family_status() {
     script="${MANAGED_DIR}/dnsmasq-family.sh"
@@ -1401,6 +1477,9 @@ main() {
         singbox/logs/size)  path="/singbox/logs/size" ;;
         singbox/logs/clear) path="/singbox/logs/clear" ;;
         singbox/logging) path="/singbox/logging" ;;
+        singbox/route-by-mark/marks)  path="/singbox/route-by-mark/marks" ;;
+        singbox/route-by-mark/status) path="/singbox/route-by-mark/status" ;;
+        singbox/route-by-mark)        path="/singbox/route-by-mark" ;;
         *)           path="/unknown" ;;
     esac
     # #region agent log
@@ -1598,6 +1677,15 @@ main() {
             else
                 json_404
             fi
+            ;;
+        /singbox/route-by-mark/marks)
+            [ "$REQUEST_METHOD" = "GET" ] && route_singbox_route_by_mark_marks || json_404
+            ;;
+        /singbox/route-by-mark/status)
+            [ "$REQUEST_METHOD" = "GET" ] && route_singbox_route_by_mark_status || json_404
+            ;;
+        /singbox/route-by-mark)
+            [ "$REQUEST_METHOD" = "POST" ] && route_singbox_route_by_mark_post "$body" || json_404
             ;;
         *)
             json_404

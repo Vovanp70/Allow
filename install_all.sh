@@ -272,7 +272,7 @@ run_all_default_install() {
     fi
 
     # Список компонентов для установки в порядке установки
-    COMPONENTS="dependencies curl-http3 stubby dnsmasq-full sing-box monitor allow logrotate"
+    COMPONENTS="dependencies curl-http3 stubby dnsmasq-full sing-box markalltovpn monitor allow logrotate"
     INSTALLED_COMPONENTS=""
     HAS_FAMILY_STUBBY=0
     HAS_FAMILY_DNSMASQ=0
@@ -488,7 +488,7 @@ is_family_instance_installed() {
 
 # Проверка наличия установленных компонентов (кроме dependencies)
 has_installed_components() {
-    COMPONENTS="stubby dnsmasq-full sing-box monitor allow logrotate curl-http3"
+    COMPONENTS="stubby dnsmasq-full sing-box markalltovpn monitor allow logrotate curl-http3"
     for comp in $COMPONENTS; do
         if state_has "installed.${comp}"; then
             return 0
@@ -589,7 +589,7 @@ run_all_default_uninstall() {
     fi
     
     allow_stage "Этап 2: Удаление основных компонентов"
-    UNINSTALL_COMPONENTS="logrotate monitor sing-box dnsmasq-full stubby curl-http3 allow"
+    UNINSTALL_COMPONENTS="logrotate monitor markalltovpn sing-box dnsmasq-full stubby curl-http3 allow"
     for comp in $UNINSTALL_COMPONENTS; do
         if [ "$FORCE" != "1" ] && ! is_component_installed "$comp"; then
             allow_skip "$comp"
@@ -644,7 +644,7 @@ run_all_default_uninstall() {
         for b in /opt/etc/allow/setsettings.backup /opt/etc/allow/setsettings.backup.prev; do [ -f "$b" ] && rm -f "$b" 2>/dev/null || true; done
         [ -d "/opt/etc/allow/init.d" ] && rm -rf /opt/etc/allow/init.d 2>/dev/null || true
         [ -f "/opt/etc/allow/dns_mode" ] && rm -f /opt/etc/allow/dns_mode 2>/dev/null || true
-        for comp_dir in /opt/etc/allow/stubby /opt/etc/allow/dnsmasq-full /opt/etc/allow/sing-box /opt/etc/allow/monitor /opt/etc/allow/bin /opt/etc/allow/curl-http3 /opt/etc/allow/manage.d /opt/etc/allow/lists; do
+        for comp_dir in /opt/etc/allow/stubby /opt/etc/allow/dnsmasq-full /opt/etc/allow/sing-box /opt/etc/allow/monitor /opt/etc/allow/bin /opt/etc/allow/curl-http3 /opt/etc/allow/manage.d /opt/etc/allow/lists /opt/etc/allow/markalltovpn; do
             [ -d "$comp_dir" ] && rm -rf "$comp_dir" 2>/dev/null || true
         done
         REMAINING_COUNT=0

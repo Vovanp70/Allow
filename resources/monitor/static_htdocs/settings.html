@@ -112,45 +112,51 @@
     </section>
 
     <section class="settings-section">
-        <h2 class="settings-section-title">Обновления</h2>
-        <p class="settings-section-desc">Синхронизация списков allow (домены, подсети) из upstream и extra-репозитория. Автообновление по cron в 04:00.</p>
-        <div class="card settings-card">
+        <div class="card settings-card updates-card">
             <div class="card-content">
-                <div class="settings-card-row">
-                    <span class="settings-card-label">Обновить списки</span>
-                    <button type="button" class="btn btn-secondary" id="sync-allow-update-btn">Обновить</button>
+                <div class="updates-main">
+                    <h2 class="settings-section-title">Обновления</h2>
+                    <p class="settings-section-desc">
+                        Синхронизация списков allow (домены, подсети) из upstream и extra-репозитория.
+                        Автообновление по cron в 04:00.
+                    </p>
                 </div>
-                <div class="settings-card-row">
-                    <span class="settings-card-label">Автообновление (cron 04:00)</span>
+                <div class="updates-one-row">
+                    <span class="settings-card-label">Автообновление</span>
                     <label class="switch">
                         <input type="checkbox" id="sync-allow-autoupdate-toggle">
                         <span class="slider"></span>
                     </label>
-                    <span id="sync-allow-autoupdate-status" class="settings-card-hint">—</span>
-                </div>
-                <div class="settings-card-row">
-                    <span class="settings-card-label">Последнее обновление</span>
+                    <span class="settings-card-label updates-one-row-sep">Последнее обновление</span>
                     <span id="sync-allow-last-update">—</span>
                 </div>
-                <div class="settings-card-row">
+                <span id="sync-allow-autoupdate-status" class="visually-hidden" aria-hidden="true">—</span>
+                <div class="updates-actions-footer">
                     <button type="button" class="btn btn-secondary" id="sync-allow-logs-btn">Посмотреть логи</button>
+                    <button type="button" class="btn btn-secondary" id="sync-allow-update-btn">Обновить списки</button>
                 </div>
             </div>
         </div>
     </section>
 
     <section class="settings-section">
-        <h2 class="settings-section-title">Sing-box: прокси (outbound'ы)</h2>
-        <p class="settings-section-desc">Список прокси из конфига Sing-box (до 10). Конвертация в ссылки и обратно: <a href="https://github.com/4n0nymou3/proxy-to-singbox-converter" target="_blank" rel="noopener">proxy-to-singbox-converter</a> (MIT). Изменения применятся после нажатия «Сохранить».</p>
-        <div class="card">
+        <div class="card settings-card singbox-card">
             <div class="card-content">
-                <div id="singbox-proxy-list" class="singbox-proxy-list"></div>
-                <p id="singbox-proxy-list-hint" class="form-hint singbox-proxy-hint"></p>
-                <div class="settings-singbox-import">
-                    <label for="singbox-settings-import-input" class="settings-import-label">Добавить из ссылок</label>
-                    <textarea id="singbox-settings-import-input" class="form-input" rows="4" placeholder="vless://…, vmess://…, trojan://…, ss://…, hy2://… или Base64-подписка"></textarea>
-                    <button type="button" class="btn btn-primary" id="singbox-settings-import-btn" onclick="singboxSettingsAddFromLinks()">Добавить в конфиг</button>
-                    <p id="singbox-settings-import-message" class="form-hint"></p>
+                <div class="singbox-main">
+                    <h2 class="settings-section-title">Sing-box: прокси (outbound'ы)</h2>
+                </div>
+                <div class="singbox-body">
+                    <div class="singbox-proxy-list-wrapper">
+                        <div id="singbox-proxy-list" class="singbox-proxy-list"></div>
+                        <p id="singbox-proxy-list-hint" class="form-hint singbox-proxy-hint"></p>
+                    </div>
+                    <div class="settings-singbox-import">
+                        <div class="singbox-import-row">
+                            <textarea id="singbox-settings-import-input" class="form-input singbox-import-input" rows="2" placeholder="vless://…, vmess://…, trojan://…, ss://…, hy2://… или Base64-подписка"></textarea>
+                            <button type="button" class="btn btn-primary" id="singbox-settings-import-btn" onclick="singboxSettingsAddFromLinks()">Добавить</button>
+                        </div>
+                        <p id="singbox-settings-import-message" class="form-hint"></p>
+                    </div>
                 </div>
             </div>
         </div>

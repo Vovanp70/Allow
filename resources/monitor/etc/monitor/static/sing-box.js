@@ -219,6 +219,106 @@ function openSingboxConfigEditor() {
     }
 }
 
+// --- Роутинг по марке (route-by-mark) ---
+async function loadRouteByMarkMarks() {
+    const selectEl = document.getElementById('singbox-route-by-mark-select');
+    if (!selectEl) return;
+    selectEl.innerHTML = '<option value="">— загрузка —</option>';
+    try {
+        const data = await apiRequest('/singbox/route-by-mark/marks');
+        const marks = Array.isArray(data.marks) ? data.marks : [];
+        selectEl.innerHTML = '<option value="">— выбрать марку —</option>';
+        marks.forEach(function (m) {
+            const opt = document.createElement('option');
+            opt.value = m;
+            opt.textContent = m;
+            selectEl.appendChild(opt);
+        });
+    } catch (e) {
+        selectEl.innerHTML = '<option value="">Ошибка загрузки</option>';
+        console.warn('Route-by-mark marks:', e);
+    }
+}
+
+async function loadRouteByMarkStatus() {
+    const statusEl = document.getElementById('singbox-route-by-mark-status');
+    if (!statusEl) return;
+    try {
+        const data = await apiRequest('/singbox/route-by-mark/status');
+        const current = (data.current_mark || '').trim();
+        if (!current || current === 'nomark') {
+            statusEl.textContent = 'Выключено';
+        } else {
+            statusEl.textContent = 'Включено: ' + current;
+        }
+    } catch (e) {
+        statusEl.textContent = '';
+    }
+}
+
+async function routeByMarkEnable() {
+    const selectEl = document.getElementById('singbox-route-by-mark-select');
+    const enableBtn = document.getElementById('singbox-route-by-mark-enable-btn');
+    const disableBtn = document.getElementById('singbox-route-by-mark-disable-btn');
+    const mark = selectEl && selectEl.value ? selectEl.value.trim() : '';
+    if (!mark) {
+        if (typeof showToast === 'function') showToast('Выберите марку', 2500);
+        return;
+    }
+    if (enableBtn) enableBtn.disabled = true;
+    if (disableBtn) disableBtn.disabled = true;
+    try {
+        if (typeof showProgress === 'function') {
+            showProgress('Включение роутинга по марке...');
+            if (typeof animateProgress === 'function') animateProgress(50, 200);
+        }
+        const data = await apiRequest('/singbox/route-by-mark', 'POST', { action: 'addmark', mark: mark });
+        if (data && data.success !== false) {
+            if (typeof showToast === 'function') showToast('Роутинг по марке ' + mark + ' включён');
+            loadRouteByMarkStatus();
+        } else {
+            if (typeof showToast === 'function') showToast('Ошибка: ' + (data.error || data.message || 'Неизвестная ошибка'), 3000);
+        }
+    } catch (error) {
+        if (typeof showToast === 'function') showToast('Ошибка: ' + error.message, 3000);
+    } finally {
+        if (typeof hideProgress === 'function') hideProgress();
+        if (typeof animateProgress === 'function') animateProgress(100, 100);
+        if (enableBtn) enableBtn.disabled = false;
+        if (disableBtn) disableBtn.disabled = false;
+    }
+}
+
+async function routeByMarkDisable() {
+    const enableBtn = document.getElementById('singbox-route-by-mark-enable-btn');
+    const disableBtn = document.getElementById('singbox-route-by-mark-disable-btn');
+    if (enableBtn) enableBtn.disabled = true;
+    if (disableBtn) disableBtn.disabled = true;
+    try {
+        if (typeof showProgress === 'function') {
+            showProgress('Выключение роутинга по марке...');
+            if (typeof animateProgress === 'function') animateProgress(50, 200);
+        }
+        const data = await apiRequest('/singbox/route-by-mark', 'POST', { action: 'delmark' });
+        if (data && data.success !== false) {
+            if (typeof showToast === 'function') showToast('Роутинг по марке выключен');
+            loadRouteByMarkStatus();
+        } else {
+            if (typeof showToast === 'function') showToast('Ошибка: ' + (data.error || data.message || 'Неизвестная ошибка'), 3000);
+        }
+    } catch (error) {
+        if (typeof showToast === 'function') showToast('Ошибка: ' + error.message, 3000);
+    } finally {
+        if (typeof hideProgress === 'function') hideProgress();
+        if (typeof animateProgress === 'function') animateProgress(100, 100);
+        if (enableBtn) enableBtn.disabled = false;
+        if (disableBtn) disableBtn.disabled = false;
+    }
+}
+
+window.routeByMarkEnable = routeByMarkEnable;
+window.routeByMarkDisable = routeByMarkDisable;
+
 // Вызов при загрузке страницы (дашборд или страница Sing-box)
 function initSingboxPage() {
     loadSingboxStatus();
@@ -226,6 +326,11 @@ function initSingboxPage() {
     if (clearBtn) {
         updateSingboxLogsSize();
         setInterval(updateSingboxLogsSize, 30000);
+    }
+    const routeByMarkSelect = document.getElementById('singbox-route-by-mark-select');
+    if (routeByMarkSelect) {
+        loadRouteByMarkMarks();
+        loadRouteByMarkStatus();
     }
 }
 if (document.readyState === 'loading') {
