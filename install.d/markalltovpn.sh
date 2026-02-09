@@ -2,7 +2,7 @@
 
 # Установка markalltovpn: route-by-mark.sh + NDM netfilter хук 000-hotspot-vpn.sh
 # Цель: /opt/etc/allow (route-by-mark.sh), /opt/etc/ndm/netfilter.d (000-hotspot-vpn.sh)
-# При деинсталляции удаляются также временные файлы: /opt/var/run/allow/route-by-mark.state
+# При деинсталляции удаляется route-by-mark.state из /opt/etc/allow
 
 set -e
 
@@ -12,7 +12,7 @@ PLATFORM="${2:-entware}"
 ETC_ALLOW="/opt/etc/allow"
 NDM_DIR="/opt/etc/ndm/netfilter.d"
 ROUTE_SCRIPT_DEST="${ETC_ALLOW}/route-by-mark.sh"
-ROUTE_BY_MARK_STATE="/opt/var/run/allow/route-by-mark.state"
+ROUTE_BY_MARK_STATE="/opt/etc/allow/route-by-mark.state"
 NEED_DIR="${NEED_DIR:-/opt/tmp/allow/resources/${COMPONENT}}"
 STATE_KEY_INSTALLED="installed.${COMPONENT}"
 LOG_DIR="/opt/var/log/allow"
@@ -109,7 +109,7 @@ uninstall_markalltovpn() {
     if [ -f "$ROUTE_BY_MARK_STATE" ]; then
         rm -f "$ROUTE_BY_MARK_STATE" 2>/dev/null && log "Удалён $ROUTE_BY_MARK_STATE" || true
     fi
-    # Пустая директория /opt/var/run/allow может остаться — не удаляем рекурсивно, только state-файл
+    # Удаляем state-файл из /opt/etc/allow
 
     state_unset "$STATE_KEY_INSTALLED"
     log "=== ДЕИНСТАЛЛЯЦИЯ ${COMPONENT} ЗАВЕРШЕНА ==="

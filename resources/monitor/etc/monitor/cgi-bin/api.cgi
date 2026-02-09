@@ -756,7 +756,7 @@ EOF
 }
 
 # --- /singbox/route-by-mark/status GET (текущая активная марка из route-by-mark.state) ---
-ROUTE_BY_MARK_STATE="/opt/var/run/allow/route-by-mark.state"
+ROUTE_BY_MARK_STATE="/opt/etc/allow/route-by-mark.state"
 route_singbox_route_by_mark_status() {
     _current="nomark"
     if [ -f "$ROUTE_BY_MARK_STATE" ]; then

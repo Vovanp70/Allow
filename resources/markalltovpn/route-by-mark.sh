@@ -1,13 +1,14 @@
 #!/bin/sh
 
 # Ручное управление правилом маршрутизации: трафик с указанной маркой -> table 111 -> sbtun0 (VPN).
-# Использование: route-by-mark.sh addmark <hex_mark> | delmark
-# Пример: route-by-mark.sh addmark 0xffffaab
-# Марку выставляет NDM (_NDM_HOTSPOT_PRERT), здесь только ip rule + маршрут.
+# Использование: route-by-mark.sh addmark <hex_mark> | delmark | sync
+# addmark — задаёт марку и применяет правило (вызов пользователем или UI).
+# delmark — удаляет правило и очищает state.
+# sync — восстанавливает правило по сохранённой в state марке (вызов NDM-хуком при start/ifup/wanup).
 
 ROUTE_TABLE=111
 IFACE="sbtun0"
-STATE_DIR="/opt/var/run/allow"
+STATE_DIR="/opt/etc/allow"
 STATE_FILE="${STATE_DIR}/route-by-mark.state"
 
 ensure_state_dir() {
@@ -33,27 +34,45 @@ load_mark() {
     echo "${MARK:-}"
 }
 
-add_rule() {
-    ROUTE_MARK_HOTSPOT="${1:-}"
-    if [ -z "$ROUTE_MARK_HOTSPOT" ]; then
-        echo "[!] Не указана марка. Использование: $0 addmark <hex_mark>"
+# Применяет ip rule + маршрут для марки. Не трогает state.
+apply_rule() {
+    _mark="${1:-}"
+    if [ -z "$_mark" ]; then
         return 1
     fi
     if ! ip link show "$IFACE" >/dev/null 2>&1; then
         echo "[!] Интерфейс $IFACE не найден (sing-box должен быть запущен)."
         return 1
     fi
-    if ip rule show | grep -q "fwmark ${ROUTE_MARK_HOTSPOT}.*lookup ${ROUTE_TABLE}"; then
-        echo "[.] Правило уже есть: fwmark ${ROUTE_MARK_HOTSPOT} -> table ${ROUTE_TABLE}"
+    if ip rule show | grep -q "fwmark ${_mark}.*lookup ${ROUTE_TABLE}"; then
+        echo "[.] Правило уже есть: fwmark ${_mark} -> table ${ROUTE_TABLE}"
     else
-        ip rule add fwmark ${ROUTE_MARK_HOTSPOT} table ${ROUTE_TABLE} priority 98 && \
-            echo "[+] Добавлено: ip rule fwmark ${ROUTE_MARK_HOTSPOT} table ${ROUTE_TABLE} prio 98"
+        ip rule add fwmark ${_mark} table ${ROUTE_TABLE} priority 98 && \
+            echo "[+] Добавлено: ip rule fwmark ${_mark} table ${ROUTE_TABLE} prio 98"
     fi
     ip route replace table ${ROUTE_TABLE} default dev ${IFACE} 2>/dev/null && \
         echo "[+] Маршрут: table ${ROUTE_TABLE} default dev ${IFACE}"
+    return 0
+}
 
-    # Сохраняем марку для последующего delmark
+add_rule() {
+    ROUTE_MARK_HOTSPOT="${1:-}"
+    if [ -z "$ROUTE_MARK_HOTSPOT" ]; then
+        echo "[!] Не указана марка. Использование: $0 addmark <hex_mark>"
+        return 1
+    fi
+    apply_rule "$ROUTE_MARK_HOTSPOT" || return 1
     save_mark "$ROUTE_MARK_HOTSPOT"
+}
+
+# Восстанавливает правило по марке из state. Вызывается NDM-хуком при start/ifup/wanup.
+sync_rule() {
+    CURRENT_MARK="$(load_mark)"
+    if [ -z "$CURRENT_MARK" ] || [ "$CURRENT_MARK" = "nomark" ]; then
+        return 0
+    fi
+    apply_rule "$CURRENT_MARK" >/dev/null 2>&1 || true
+    return 0
 }
 
 del_rule() {
@@ -83,8 +102,11 @@ case "${1:-}" in
   delmark)
     del_rule
     ;;
+  sync)
+    sync_rule
+    ;;
   *)
-    echo "Использование: $0 addmark <hex_mark> | delmark"
+    echo "Использование: $0 addmark <hex_mark> | delmark | sync"
     exit 1
     ;;
 esac
