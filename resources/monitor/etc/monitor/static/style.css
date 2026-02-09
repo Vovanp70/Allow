@@ -321,6 +321,17 @@ header {
     background: #0051d5;
 }
 
+.btn-primary:disabled,
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-primary:disabled:hover {
+    background: #007aff;
+}
+
 .btn-secondary {
     background: #f0f0f0;
     color: #1d1d1f;
@@ -332,6 +343,14 @@ header {
 
 .btn:active {
     transform: scale(0.98);
+}
+
+.btn:focus {
+    outline: none;
+}
+
+.btn:focus-visible {
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.35);
 }
 
 /* Модальное окно */
@@ -708,6 +727,14 @@ a.menu-item {
     border-left-color: #007aff;
     color: #1d1d1f;
     font-weight: 600;
+}
+
+.menu-item:focus {
+    outline: none;
+}
+
+.menu-item:focus-visible {
+    box-shadow: inset 0 0 0 2px #007aff;
 }
 
 .menu-item span {
@@ -1129,7 +1156,8 @@ a.menu-item {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     border: 2px solid transparent;
     cursor: pointer;
-    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s, background-color 0.2s;
+    position: relative;
 }
 
 .dns-mode-card:hover {
@@ -1137,9 +1165,33 @@ a.menu-item {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
+.dns-mode-card:focus {
+    outline: none;
+}
+
+.dns-mode-card:focus-visible {
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.35);
+}
+
 .dns-mode-card.selected {
     border-color: #007aff;
-    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.2);
+    background-color: rgba(0, 122, 255, 0.06);
+    box-shadow: 0 4px 16px rgba(0, 122, 255, 0.2);
+}
+
+.dns-mode-card.selected::before {
+    content: '';
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    width: 20px;
+    height: 20px;
+    background: #007aff;
+    border-radius: 50%;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'%3E%3C/polyline%3E%3C/svg%3E");
+    background-size: 12px;
+    background-repeat: no-repeat;
+    background-position: center;
 }
 
 .dns-mode-card-manual {
@@ -1207,19 +1259,31 @@ a.menu-item {
     justify-content: space-between;
     gap: 16px;
     margin-bottom: 32px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #e8e8ed;
 }
 
 .settings-page-header h1 {
-    font-size: 28px;
-    font-weight: 600;
+    font-size: 32px;
+    font-weight: 700;
     color: #1d1d1f;
     margin: 0;
+    letter-spacing: -0.02em;
 }
 
+/* Панель сохранения: выделение при наличии несохранённых изменений */
 .settings-save-bar {
     display: flex;
     align-items: center;
     gap: 12px;
+    padding: 10px 16px;
+    margin: -10px -16px -10px 0;
+    border-radius: 12px;
+    transition: background-color 0.2s ease;
+}
+
+.settings-save-bar:has(#settings-save-btn:not([disabled])) {
+    background-color: rgba(0, 122, 255, 0.08);
 }
 
 .settings-unsaved-hint {
@@ -1227,26 +1291,52 @@ a.menu-item {
     color: #6e6e73;
 }
 
+#settings-save-btn:not([disabled]) {
+    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.35);
+}
+
+#settings-save-btn:not([disabled]):hover {
+    box-shadow: 0 4px 12px rgba(0, 122, 255, 0.4);
+}
+
 .settings-section {
-    margin-bottom: 32px;
+    margin-bottom: 40px;
+    padding-bottom: 24px;
+    border-bottom: 1px solid #e8e8ed;
+}
+
+.settings-section:last-of-type {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
 }
 
 .settings-section-title {
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 600;
     color: #1d1d1f;
-    margin: 0 0 8px 0;
+    margin: 0 0 6px 0;
 }
 
 .settings-section-desc {
     font-size: 14px;
     color: #6e6e73;
-    line-height: 1.45;
-    margin: 0 0 16px 0;
+    line-height: 1.5;
+    margin: 0 0 18px 0;
 }
 
 .settings-section-desc a {
     color: #007aff;
+    text-decoration: none;
+}
+
+.settings-section-desc a:hover {
+    text-decoration: underline;
+}
+
+.settings-section-desc a:focus-visible {
+    outline: 2px solid #007aff;
+    outline-offset: 2px;
 }
 
 .settings-section-status {
@@ -1266,9 +1356,38 @@ a.menu-item {
 }
 
 .settings-card-label {
-    font-size: 18px;
-    font-weight: 600;
+    font-size: 15px;
+    font-weight: 500;
     color: #1d1d1f;
+}
+
+/* Строка с переключателем: вся строка визуально кликабельна */
+.settings-card-row--clickable {
+    cursor: pointer;
+}
+
+.settings-card-row--clickable:hover .settings-card-label {
+    color: #007aff;
+}
+
+/* Карточка детской фильтрации: текст слева, тумблер в правом нижнем углу */
+.children-filter-card .card-content {
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.children-filter-text {
+    flex: 1 1 auto;
+}
+
+.children-filter-toggle-container {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    align-items: flex-end;
 }
 
 .settings-card-hint {

@@ -19,7 +19,7 @@
     <a href="/dashboard.html" class="menu-item ">
         <span>Системный монитор</span>
     </a>
-    <a href="/settings.html" class="menu-item active">
+    <a href="/settings.html" class="menu-item active" aria-current="page">
         <span>Настройки</span>
     </a>
     <a href="/routing.html" class="menu-item ">
@@ -54,19 +54,19 @@
         <div class="content-area">
             
 <div class="settings-page">
-    <header class="settings-page-header">
+    <header class="settings-page-header" role="banner">
         <h1>Настройки</h1>
-        <div class="settings-save-bar">
+        <div class="settings-save-bar" id="settings-save-bar" aria-live="polite">
             <span class="settings-unsaved-hint" id="settings-unsaved-hint"></span>
-            <button type="button" class="btn btn-primary" id="settings-save-btn" disabled>Сохранить</button>
+            <button type="button" class="btn btn-primary" id="settings-save-btn" disabled aria-describedby="settings-unsaved-hint">Сохранить</button>
         </div>
     </header>
 
-    <section class="settings-section">
-        <h2 class="settings-section-title">Режим работы Stubby (DoT)</h2>
-        <p class="settings-section-desc">Выберите режим DNS через DoT. Изменения применятся после нажатия «Сохранить».</p>
-        <div class="dns-mode-cards">
-            <div class="dns-mode-card" id="mode-adblock" data-mode="adblock" role="button" tabindex="0">
+    <section class="settings-section" aria-labelledby="settings-dot-title" aria-describedby="settings-dot-desc">
+        <h2 id="settings-dot-title" class="settings-section-title">Режим работы Stubby (DoT)</h2>
+        <p id="settings-dot-desc" class="settings-section-desc">Выберите режим DNS через DoT. Изменения применятся после нажатия «Сохранить».</p>
+        <div class="dns-mode-cards" role="group" aria-label="Режим DNS">
+            <div class="dns-mode-card" id="mode-adblock" data-mode="adblock" role="button" tabindex="0" aria-pressed="false" aria-label="DoT с блокировкой рекламы и защитой от опасных сайтов">
                 <div class="dns-mode-card-header">
                     <h3>DoT + Блокировка рекламы + Защита от опасных сайтов</h3>
                 </div>
@@ -74,7 +74,7 @@
                     <p>AdGuard, Control D и аналогичные серверы с фильтрацией рекламы и вредоносных сайтов.</p>
                 </div>
             </div>
-            <div class="dns-mode-card" id="mode-stable" data-mode="stable" role="button" tabindex="0">
+            <div class="dns-mode-card" id="mode-stable" data-mode="stable" role="button" tabindex="0" aria-pressed="false" aria-label="DoT с защитой от опасных сайтов, без блокировки рекламы">
                 <div class="dns-mode-card-header">
                     <h3>DoT + Защита от опасных сайтов</h3>
                 </div>
@@ -82,7 +82,7 @@
                     <p>Cloudflare, Yandex и другие стабильные DoT-серверы с защитой от опасных сайтов, без блокировки рекламы.</p>
                 </div>
             </div>
-            <div class="dns-mode-card dns-mode-card-manual" id="mode-manual" data-mode="manual" role="button" tabindex="0">
+            <div class="dns-mode-card dns-mode-card-manual" id="mode-manual" data-mode="manual" role="button" tabindex="0" aria-pressed="false" aria-label="Ручная настройка конфига">
                 <div class="dns-mode-card-header">
                     <h3>Ручная настройка (конфиг изменён)</h3>
                 </div>
@@ -95,15 +95,18 @@
     </section>
 
     <section class="settings-section">
-        <h2 class="settings-section-title">Фильтрация контента для детей</h2>
-        <p class="settings-section-desc">Stubby-family и Dnsmasq-full family работают вместе для фильтрации контента на детских устройствах. Включение запускает оба компонента и добавляет их в автозапуск.</p>
-        <div class="card settings-card">
-            <div class="card-content settings-card-row">
-                <span class="settings-card-label">Включить фильтрацию</span>
-                <label class="switch" for="children-filter-toggle">
-                    <input type="checkbox" id="children-filter-toggle">
-                    <span class="slider"></span>
-                </label>
+        <div class="card settings-card children-filter-card">
+            <div class="card-content" role="group" aria-labelledby="children-filter-title">
+                <div class="children-filter-text">
+                    <h2 id="children-filter-title" class="settings-section-title">Фильтрация контента для детей</h2>
+                    <p class="settings-section-desc">Stubby-family и Dnsmasq-full family работают вместе для фильтрации контента на детских устройствах. Включение запускает оба компонента и добавляет их в автозапуск.</p>
+                </div>
+                <div class="children-filter-toggle-container">
+                    <label class="switch" for="children-filter-toggle">
+                        <input type="checkbox" id="children-filter-toggle">
+                        <span class="slider"></span>
+                    </label>
+                </div>
             </div>
         </div>
     </section>
