@@ -167,28 +167,28 @@ LISTS_BASE="${LISTS_BASE:-/opt/etc/allow/lists}"
 TMP_DIR="${TMP_DIR:-/tmp}"
 BASE_URL="https://raw.githubusercontent.com/itdoginfo/allow-domains/refs/heads/main"
 EXTRA_REPO_URL="${EXTRA_REPO_URL:-https://raw.githubusercontent.com/Vovanp70/Allow/main/lists/itdoginfo-extra}"
-RUS_SERVICES_OUT_NAME="russian_services_hosts_auto.txt"
+RUS_SERVICES_OUT_NAME="Russian-services_hosts_auto.txt"
 
 # Формат: "URL|имя_файла" (без пробелов вокруг |)
 LISTS="
-${BASE_URL}/Categories/anime.lst|anime_hosts_auto.txt
-${BASE_URL}/Services/youtube.lst|youtube_hosts_auto.txt
-${BASE_URL}/Categories/block.lst|block_hosts_auto.txt
-${BASE_URL}/Categories/geoblock.lst|geoblock_hosts_auto.txt
-${BASE_URL}/Categories/news.lst|news_hosts_auto.txt
-${BASE_URL}/Categories/porn.lst|porn_hosts_auto.txt
-${BASE_URL}/Categories/hodca.lst|hodca_hosts_auto.txt
-${BASE_URL}/Subnets/IPv4/cloudflare.lst|cloudflare_subnets_auto.txt
-${BASE_URL}/Services/discord.lst|discord_hosts_auto.txt
-${BASE_URL}/Subnets/IPv4/discord.lst|discord_subnets_auto.txt
-${BASE_URL}/Services/hdrezka.lst|hdrezka_hosts_auto.txt
-${BASE_URL}/Services/meta.lst|meta_hosts_auto.txt
-${BASE_URL}/Subnets/IPv4/meta.lst|meta_subnets_auto.txt
-${BASE_URL}/Services/telegram.lst|telegram_hosts_auto.txt
-${BASE_URL}/Subnets/IPv4/telegram.lst|telegram_subnets_auto.txt
-${BASE_URL}/Services/tiktok.lst|tiktok_hosts_auto.txt
-${BASE_URL}/Services/twitter.lst|twitter_hosts_auto.txt
-${BASE_URL}/Subnets/IPv4/twitter.lst|twitter_subnets_auto.txt
+${BASE_URL}/Categories/anime.lst|Anime_hosts_auto.txt
+${BASE_URL}/Services/youtube.lst|YouTube_hosts_auto.txt
+${BASE_URL}/Categories/block.lst|Block_hosts_auto.txt
+${BASE_URL}/Categories/geoblock.lst|GeoBlock_hosts_auto.txt
+${BASE_URL}/Categories/news.lst|News_hosts_auto.txt
+${BASE_URL}/Categories/porn.lst|Porn_hosts_auto.txt
+${BASE_URL}/Categories/hodca.lst|HODCA_hosts_auto.txt
+${BASE_URL}/Subnets/IPv4/cloudflare.lst|Cloudflare_subnets_auto.txt
+${BASE_URL}/Services/discord.lst|Discord_hosts_auto.txt
+${BASE_URL}/Subnets/IPv4/discord.lst|Discord_subnets_auto.txt
+${BASE_URL}/Services/hdrezka.lst|HDRezka_hosts_auto.txt
+${BASE_URL}/Services/meta.lst|Meta_hosts_auto.txt
+${BASE_URL}/Subnets/IPv4/meta.lst|Meta_subnets_auto.txt
+${BASE_URL}/Services/telegram.lst|Telegram_hosts_auto.txt
+${BASE_URL}/Subnets/IPv4/telegram.lst|Telegram_subnets_auto.txt
+${BASE_URL}/Services/tiktok.lst|TikTok_hosts_auto.txt
+${BASE_URL}/Services/twitter.lst|Twitter_hosts_auto.txt
+${BASE_URL}/Subnets/IPv4/twitter.lst|Twitter_subnets_auto.txt
 "
 
 # Временные файлы (один набор на все списки, очистка в trap)
@@ -365,58 +365,58 @@ for entry in $LISTS; do
     # 3. Определение extra‑файла для списка (имя файла в репо Vovanp70/Allow)
     EXTRA_FILENAME=""
     case "$OUT_NAME" in
-        anime_hosts_auto.txt)
+        Anime_hosts_auto.txt)
             EXTRA_FILENAME="Anime.txt"
             ;;
-        youtube_hosts_auto.txt)
+        YouTube_hosts_auto.txt)
             EXTRA_FILENAME="YouTube.txt"
             ;;
-        block_hosts_auto.txt)
+        Block_hosts_auto.txt)
             EXTRA_FILENAME="Block.txt"
             ;;
-        geoblock_hosts_auto.txt)
+        GeoBlock_hosts_auto.txt)
             EXTRA_FILENAME="GeoBlock.txt"
             ;;
-        news_hosts_auto.txt)
+        News_hosts_auto.txt)
             EXTRA_FILENAME="News.txt"
             ;;
-        porn_hosts_auto.txt)
+        Porn_hosts_auto.txt)
             EXTRA_FILENAME="Porn.txt"
             ;;
-        hodca_hosts_auto.txt)
+        HODCA_hosts_auto.txt)
             EXTRA_FILENAME="HODCA.txt"
             ;;
-        cloudflare_subnets_auto.txt)
+        Cloudflare_subnets_auto.txt)
             EXTRA_FILENAME="Cloudflare.txt"
             ;;
-        discord_hosts_auto.txt)
+        Discord_hosts_auto.txt)
             EXTRA_FILENAME="Discord.txt"
             ;;
-        discord_subnets_auto.txt)
+        Discord_subnets_auto.txt)
             EXTRA_FILENAME="Discord-Subnets.txt"
             ;;
-        hdrezka_hosts_auto.txt)
+        HDRezka_hosts_auto.txt)
             EXTRA_FILENAME="HDRezka.txt"
             ;;
-        meta_hosts_auto.txt)
+        Meta_hosts_auto.txt)
             EXTRA_FILENAME="Meta.txt"
             ;;
-        meta_subnets_auto.txt)
+        Meta_subnets_auto.txt)
             EXTRA_FILENAME="Meta-Subnets.txt"
             ;;
-        telegram_hosts_auto.txt)
+        Telegram_hosts_auto.txt)
             EXTRA_FILENAME="Telegram.txt"
             ;;
-        telegram_subnets_auto.txt)
+        Telegram_subnets_auto.txt)
             EXTRA_FILENAME="Telegram-Subnets.txt"
             ;;
-        tiktok_hosts_auto.txt)
+        TikTok_hosts_auto.txt)
             EXTRA_FILENAME="TikTok.txt"
             ;;
-        twitter_hosts_auto.txt)
+        Twitter_hosts_auto.txt)
             EXTRA_FILENAME="Twitter.txt"
             ;;
-        twitter_subnets_auto.txt)
+        Twitter_subnets_auto.txt)
             EXTRA_FILENAME="Twitter-Subnets.txt"
             ;;
     esac
