@@ -13,6 +13,9 @@ AUTOSTART_SCRIPT="${MANAGED_DIR}/autostart.sh"
 ETC_ALLOW="${ETC_ALLOW:-/opt/etc/allow}"
 DEBUG_LOG="/opt/var/log/allow/monitor/cgi_debug.log"
 
+# Базовая директория списков маршрутизации (blocks)
+ROUTING_LISTS_BASE="${ROUTING_LISTS_BASE:-${ETC_ALLOW}/lists}"
+
 # --- Dnsmasq log and config paths (same as manage.d) ---
 DNSMASQ_LOG="/opt/var/log/allow/dnsmasq.log"
 DNSMASQ_FAMILY_LOG="/opt/var/log/allow/dnsmasq-family.log"
@@ -73,6 +76,164 @@ json_500() {
     cgi_header
     err="$(json_esc "$1")"
     printf '{"error":"%s"}\n' "$err"
+}
+
+# --- Routing helpers (lists -> blocks model) ---
+
+# Преобразование routingType -> подкаталог в ROUTING_LISTS_BASE
+# direct  -> nonbypass
+# bypass  -> zapret
+# vpn     -> bypass
+get_routing_dir_for_type() {
+    _rt="$1"
+    case "$_rt" in
+        direct)  echo "${ROUTING_LISTS_BASE}/nonbypass" ;;
+        bypass)  echo "${ROUTING_LISTS_BASE}/zapret" ;;
+        vpn)     echo "${ROUTING_LISTS_BASE}/bypass" ;;
+        *)       echo "" ;;
+    esac
+}
+
+# Вывод JSON-массива строк на основе txt-файла
+# Нормализуем: убираем комментарии, пробелы, пустые строки
+routing_json_array_from_file() {
+    _file="$1"
+    printf '['
+    if [ -f "$_file" ]; then
+        _first=1
+        # shellcheck disable=SC2162
+        while IFS= read -r _line || [ -n "$_line" ]; do
+            # Удаляем комментарии и лишние пробелы
+            _norm="$(printf '%s\n' "$_line" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//')"
+            [ -z "$_norm" ] && continue
+            _esc="$(json_esc "$_norm")"
+            if [ "$_first" -eq 1 ]; then
+                _first=0
+            else
+                printf ','
+            fi
+            printf '"%s"' "$_esc"
+        done < "$_file"
+    fi
+    printf ']'
+}
+
+# Построить JSON-объект блока по имени и директории
+# Формат блока:
+# {
+#   "id": "<name>",
+#   "name": "<name>",
+#   "routing_type": "<direct|bypass|vpn>",
+#   "hosts":   { "auto": [...], "user": [...] },
+#   "subnets": { "auto": [...], "user": [...] }
+# }
+routing_print_block_object() {
+    _rt="$1"
+    _name="$2"
+    _dir="$3"
+
+    _id_esc="$(json_esc "$_name")"
+    _name_esc="$(json_esc "$_name")"
+
+    _hosts_auto="${_dir}/${_name}_hosts_auto.txt"
+    _hosts_user="${_dir}/${_name}_hosts_user.txt"
+    _subnets_auto="${_dir}/${_name}_subnets_auto.txt"
+    _subnets_user="${_dir}/${_name}_subnets_user.txt"
+
+    printf '{'
+    printf '"id":"%s",' "$_id_esc"
+    printf '"name":"%s",' "$_name_esc"
+    printf '"routing_type":"%s",' "$(json_esc "$_rt")"
+
+    printf '"hosts":{"auto":'
+    routing_json_array_from_file "$_hosts_auto"
+    printf ',"user":'
+    routing_json_array_from_file "$_hosts_user"
+    printf '},'
+
+    printf '"subnets":{"auto":'
+    routing_json_array_from_file "$_subnets_auto"
+    printf ',"user":'
+    routing_json_array_from_file "$_subnets_user"
+    printf '}'
+
+    printf '}'
+}
+
+# GET /routing/blocks/<routingType>  -> список блоков
+# GET /routing/blocks/<routingType>/<blockId> -> один блок
+route_routing_blocks_get() {
+    # PATH_INFO имеет вид routing/blocks/<routingType>[/*]
+    _pi="$PATH_INFO"
+    _sub="${_pi#routing/blocks/}"
+    # Нет routingType
+    [ -z "$_sub" ] && { status_header 400; cgi_header; printf '{"success":false,"error":"routingType required"}\n'; return 0; }
+
+    _routing_type="${_sub%%/*}"
+    _rest="${_sub#${_routing_type}}"
+    _rest="${_rest#/}"
+
+    _dir="$(get_routing_dir_for_type "$_routing_type")"
+    if [ -z "$_dir" ] || [ ! -d "$_dir" ]; then
+        status_header 404
+        cgi_header
+        printf '{"success":false,"error":"Unknown routing type or directory not found"}\n'
+        return 0
+    fi
+
+    cgi_header
+
+    # Список блоков
+    if [ -z "$_rest" ]; then
+        printf '{"success":true,"blocks":['
+
+        _first_block=1
+        # Собираем уникальные имена блоков по префиксу до _hosts/_subnets
+        for f in "$_dir"/*.txt; do
+            [ -f "$f" ] || continue
+            _base="$(basename "$f" .txt)"
+            case "$_base" in
+                *_hosts_auto)     _name="${_base%_hosts_auto}" ;;
+                *_hosts_user)     _name="${_base%_hosts_user}" ;;
+                *_subnets_auto)   _name="${_base%_subnets_auto}" ;;
+                *_subnets_user)   _name="${_base%_subnets_user}" ;;
+                *) continue ;;
+            esac
+            [ -z "$_name" ] && continue
+
+            # Проверяем, не выводили ли уже такой блок
+            if printf '%s\n' "$_seen_blocks" | grep -Fxq "$_name" 2>/dev/null; then
+                continue
+            fi
+            _seen_blocks="$(printf '%s\n%s' "${_seen_blocks:-}" "$_name")"
+
+            if [ "$_first_block" -eq 1 ]; then
+                _first_block=0
+            else
+                printf ','
+            fi
+            routing_print_block_object "$_routing_type" "$_name" "$_dir"
+        done
+
+        printf ']}'
+        return 0
+    fi
+
+    # Один блок: _rest = <blockId> (мы используем id == name)
+    _block_id="$_rest"
+    _block_name="$_block_id"
+
+    # Проверяем, что есть хотя бы один файл для этого блока
+    if ! ls "$_dir"/"${_block_name}"_*_*.txt >/dev/null 2>&1; then
+        status_header 404
+        cgi_header
+        printf '{"success":false,"error":"Block not found"}\n'
+        return 0
+    fi
+
+    printf '{"success":true,"block":'
+    routing_print_block_object "$_routing_type" "$_block_name" "$_dir"
+    printf '}'
 }
 
 # --- Parse KEY=value from script output ---
@@ -1510,6 +1671,8 @@ main() {
         singbox/route-by-mark/status)        path="/singbox/route-by-mark/status" ;;
         singbox/route-by-mark/iptables-rules) path="/singbox/route-by-mark/iptables-rules" ;;
         singbox/route-by-mark)              path="/singbox/route-by-mark" ;;
+        routing/blocks/*) path="/routing/blocks" ;;
+        routing/apply)    path="/routing/apply" ;;
         *)           path="/unknown" ;;
     esac
     # #region agent log
@@ -1719,6 +1882,17 @@ main() {
             ;;
         /singbox/route-by-mark)
             [ "$REQUEST_METHOD" = "POST" ] && route_singbox_route_by_mark_post "$body" || json_404
+            ;;
+        /routing/blocks)
+            if [ "$REQUEST_METHOD" = "GET" ]; then
+                route_routing_blocks_get
+            else
+                json_404
+            fi
+            ;;
+        /routing/apply)
+            # Реализация /routing/apply (пересборка ipset/dnsmasq) будет добавлена отдельно
+            json_404
             ;;
         *)
             json_404
