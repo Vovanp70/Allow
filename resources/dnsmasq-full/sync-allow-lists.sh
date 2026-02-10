@@ -215,6 +215,8 @@ mkdir -p "$LISTS_BASE" 2>/dev/null || true
 mkdir -p "$LISTS_BASE/bypass" "$LISTS_BASE/zapret" "$LISTS_BASE/nonbypass" "$LISTS_BASE/del-usr" 2>/dev/null || true
 mkdir -p "$(dirname "$SYNC_LOG")" 2>/dev/null || true
 mkdir -p "$TMP_DIR" 2>/dev/null || true
+# Гарантируем наличие solitary.txt для del-usr (источник токенов для глобального удаления)
+[ -f "${LISTS_BASE}/del-usr/solitary.txt" ] || : > "${LISTS_BASE}/del-usr/solitary.txt" 2>/dev/null || true
 
 FAIL_COUNT=0
 

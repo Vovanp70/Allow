@@ -269,9 +269,6 @@ route_routing_block_items_post() {
 
     _block_name="$_block_id"
 
-    # Разбираем JSON body простым grep/sed: hosts_user и subnets_user (массив строк)
-    # Формат ожидается: {"hosts_user":["a","b"],"subnets_user":["1.1.1.1",...]}
-
     _body="$body"
 
     # Вспомогательная функция: вытащить массив строк из JSON-поля
@@ -280,9 +277,7 @@ route_routing_block_items_post() {
         printf '%s\n' "$_body" | sed -n "s/.*\"${_field}\"[[:space:]]*:[[:space:]]*\[\(.*\)\].*/\1/p" | sed 's/[[:space:]]//g'
     }
 
-    _hosts_raw="$(get_array_field "hosts_user")"
-    _subnets_raw="$(get_array_field "subnets_user")"
-
+    # Базовый парсер массива JSON-строк вида ["a","b"]
     write_list_from_raw_array() {
         _raw="$1"
         _file="$2"
@@ -300,12 +295,157 @@ route_routing_block_items_post() {
         fi
     }
 
-    # Обновляем hosts_user и subnets_user, если поля присутствуют
-    if echo "$_body" | grep -q '"hosts_user"' 2>/dev/null; then
-        write_list_from_raw_array "$_hosts_raw" "${_dir}/${_block_name}_hosts_user.txt"
-    fi
-    if echo "$_body" | grep -q '"subnets_user"' 2>/dev/null; then
-        write_list_from_raw_array "$_subnets_raw" "${_dir}/${_block_name}_subnets_user.txt"
+    append_list_from_raw_array() {
+        _raw="$1"
+        _file="$2"
+        : >"$_file.tmp"
+        if [ -n "$_raw" ]; then
+            printf '%s\n' "$_raw" | tr ',' '\n' | sed 's/^"//;s/"$//' | sed 's/\\n/\n/g' | while IFS= read -r _line; do
+                _norm="$(printf '%s\n' "$_line" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//')"
+                [ -z "$_norm" ] && continue
+                printf '%s\n' "$_norm" >>"$_file.tmp"
+            done
+        fi
+        if [ -f "$_file.tmp" ]; then
+            if [ -f "$_file" ]; then
+                cat "$_file" "$_file.tmp" | sort -u >"$_file.new" 2>/dev/null || true
+                mv "$_file.new" "$_file" 2>/dev/null || rm -f "$_file.new" 2>/dev/null || true
+                rm -f "$_file.tmp" 2>/dev/null || true
+            else
+                sort -u "$_file.tmp" >"$_file" 2>/dev/null || rm -f "$_file.tmp" 2>/dev/null || true
+            fi
+        fi
+    }
+
+    # Новый контракт: items + item_type, плюс совместимость с hosts_user/subnets_user
+    _item_type="$(printf '%s\n' "$_body" | sed -n 's/.*"item_type"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+
+    if [ -n "$_item_type" ] && echo "$_body" | grep -q '"items"' 2>/dev/null; then
+        # Новый режим: items + item_type
+        _items_raw="$(get_array_field "items")"
+
+        # Нормализованные множества: A (auto), U (user), F (final)
+        TMP_A="/tmp/routing-A-$$"
+        TMP_U="/tmp/routing-U-$$"
+        TMP_F="/tmp/routing-F-$$"
+        TMP_SOL="/tmp/routing-sol-$$"
+
+        # Выбор файлов по item_type
+        case "$_item_type" in
+            IPS|ips)
+                AUTO_FILE="${_dir}/${_block_name}_subnets_auto.txt"
+                USER_FILE="${_dir}/${_block_name}_subnets_user.txt"
+                ;;
+            HOSTS|hosts)
+                AUTO_FILE="${_dir}/${_block_name}_hosts_auto.txt"
+                USER_FILE="${_dir}/${_block_name}_hosts_user.txt"
+                ;;
+            *)
+                status_header 400
+                cgi_header
+                printf '{"success":false,"error":"invalid item_type"}\n'
+                return 0
+                ;;
+        esac
+
+        # A: auto
+        : >"$TMP_A"
+        if [ -f "$AUTO_FILE" ]; then
+            sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' "$AUTO_FILE" 2>/dev/null | grep -v '^$' | sort -u >"$TMP_A" 2>/dev/null || true
+        fi
+
+        # U: user
+        : >"$TMP_U"
+        if [ -f "$USER_FILE" ]; then
+            sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' "$USER_FILE" 2>/dev/null | grep -v '^$' | sort -u >"$TMP_U" 2>/dev/null || true
+        fi
+
+        # F: итоговый список из items
+        : >"$TMP_F"
+        if [ -n "$_items_raw" ]; then
+            printf '%s\n' "$_items_raw" | tr ',' '\n' | sed 's/^"//;s/"$//' | sed 's/\\n/\n/g' | while IFS= read -r _line; do
+                _norm="$(printf '%s\n' "$_line" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//')"
+                [ -z "$_norm" ] && continue
+                printf '%s\n' "$_norm" >>"$TMP_F"
+            done
+        fi
+        sort -u "$TMP_F" -o "$TMP_F" 2>/dev/null || true
+
+        # DeletedFromAuto = A \ F
+        : >"$TMP_SOL"
+        if [ -s "$TMP_A" ]; then
+            while IFS= read -r token; do
+                [ -z "$token" ] && continue
+                if ! grep -Fxq "$token" "$TMP_F" 2>/dev/null; then
+                    printf '%s\n' "$token" >>"$TMP_SOL"
+                fi
+            done <"$TMP_A"
+        fi
+
+        # NewU = (F ∩ U) ∪ (F \ (A ∪ U))
+        TMP_NEWU="/tmp/routing-Unew-$$"
+        : >"$TMP_NEWU"
+
+        # KeptUser = F ∩ U
+        if [ -s "$TMP_F" ] && [ -s "$TMP_U" ]; then
+            while IFS= read -r token; do
+                [ -z "$token" ] && continue
+                if grep -Fxq "$token" "$TMP_U" 2>/dev/null; then
+                    printf '%s\n' "$token" >>"$TMP_NEWU"
+                fi
+            done <"$TMP_F"
+        fi
+
+        # Added = F \ (A ∪ U)
+        if [ -s "$TMP_F" ]; then
+            while IFS= read -r token; do
+                [ -z "$token" ] && continue
+                if grep -Fxq "$token" "$TMP_A" 2>/dev/null; then
+                    continue
+                fi
+                if grep -Fxq "$token" "$TMP_U" 2>/dev/null; then
+                    continue
+                fi
+                printf '%s\n' "$token" >>"$TMP_NEWU"
+            done <"$TMP_F"
+        fi
+
+        sort -u "$TMP_NEWU" -o "$TMP_NEWU" 2>/dev/null || true
+
+        # Записываем новый user-файл
+        if [ -s "$TMP_NEWU" ]; then
+            cat "$TMP_NEWU" >"$USER_FILE" 2>/dev/null || true
+        else
+            : >"$USER_FILE" 2>/dev/null || true
+        fi
+
+        # Обновляем solitary.txt из DeletedFromAuto
+        if [ -s "$TMP_SOL" ]; then
+            SOLITARY_DIR="${ROUTING_LISTS_BASE}/del-usr"
+            SOLITARY_FILE="${SOLITARY_DIR}/solitary.txt"
+            mkdir -p "$SOLITARY_DIR" 2>/dev/null || true
+            if [ -f "$SOLITARY_FILE" ]; then
+                cat "$SOLITARY_FILE" "$TMP_SOL" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' 2>/dev/null | grep -v '^$' | sort -u >"${SOLITARY_FILE}.tmp" 2>/dev/null || true
+                mv "${SOLITARY_FILE}.tmp" "$SOLITARY_FILE" 2>/dev/null || rm -f "${SOLITARY_FILE}.tmp" 2>/dev/null || true
+            else
+                sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' "$TMP_SOL" 2>/dev/null | grep -v '^$' | sort -u >"$SOLITARY_FILE" 2>/dev/null || true
+            fi
+        fi
+
+        rm -f "$TMP_A" "$TMP_U" "$TMP_F" "$TMP_SOL" "$TMP_NEWU" 2>/dev/null || true
+
+    else
+        # Старый режим: прямое обновление hosts_user / subnets_user
+        _hosts_raw="$(get_array_field "hosts_user")"
+        _subnets_raw="$(get_array_field "subnets_user")"
+
+        # Обновляем hosts_user и subnets_user, если поля присутствуют
+        if echo "$_body" | grep -q '"hosts_user"' 2>/dev/null; then
+            write_list_from_raw_array "$_hosts_raw" "${_dir}/${_block_name}_hosts_user.txt"
+        fi
+        if echo "$_body" | grep -q '"subnets_user"' 2>/dev/null; then
+            write_list_from_raw_array "$_subnets_raw" "${_dir}/${_block_name}_subnets_user.txt"
+        fi
     fi
 
     cgi_header

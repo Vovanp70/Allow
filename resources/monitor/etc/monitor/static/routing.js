@@ -146,23 +146,29 @@ async function editBlockItems(routingType, blockId, itemType) {
             return;
         }
         
-        // Берем только user-элементы по типу
-        let filteredItems = [];
+        // Разделяем auto и user по типу
+        let autoItems = [];
+        let userItems = [];
         if (itemType === 'IPS') {
-            filteredItems = (block.subnets && Array.isArray(block.subnets.user)) ? block.subnets.user : [];
+            autoItems = (block.subnets && Array.isArray(block.subnets.auto)) ? block.subnets.auto : [];
+            userItems = (block.subnets && Array.isArray(block.subnets.user)) ? block.subnets.user : [];
         } else if (itemType === 'HOSTS') {
-            filteredItems = (block.hosts && Array.isArray(block.hosts.user)) ? block.hosts.user : [];
+            autoItems = (block.hosts && Array.isArray(block.hosts.auto)) ? block.hosts.auto : [];
+            userItems = (block.hosts && Array.isArray(block.hosts.user)) ? block.hosts.user : [];
         }
+        const allItems = [...autoItems, ...userItems];
         
         const title = `${block.name} - ${itemType}`;
         const filePath = `/opt/etc/allow/dnsmasq-full/ipsets/${routingType === 'direct' ? 'nonbypass' : routingType === 'bypass' ? 'zapret' : 'bypass'}.txt`;
-        const itemsText = filteredItems.join('\n');
+        const itemsText = allItems.join('\n');
         
         // Сохраняем контекст для сохранения
         window.currentRoutingEdit = {
             routingType: routingType,
             blockId: blockId,
-            itemType: itemType
+            itemType: itemType,
+            autoItems: autoItems,
+            userItems: userItems
         };
         
         // Переопределяем loadConfigEditor ПЕРЕД вызовом openConfigEditor
@@ -197,7 +203,7 @@ async function editBlockItems(routingType, blockId, itemType) {
                 return originalSaveConfigEditor();
             }
             
-            const { routingType, blockId, itemType } = window.currentRoutingEdit;
+            const { routingType, blockId, itemType, autoItems, userItems } = window.currentRoutingEdit;
             
             try {
                 // Инициализируем pendingChanges если нужно
@@ -212,6 +218,38 @@ async function editBlockItems(routingType, blockId, itemType) {
                     }
                 }
                 
+                // Считаем множества для diff: A (auto), U (user), F (final)
+                const A = autoItems.slice();
+                const U = userItems.slice();
+                const F = editedItems.slice();
+
+                const Aset = new Set(A);
+                const Uset = new Set(U);
+
+                // DeletedFromAuto = A \ F
+                const deletedFromAuto = A.filter(token => !F.includes(token));
+
+                // KeptUser = F ∩ U
+                const keptUser = F.filter(token => Uset.has(token));
+
+                // Added = F \ (A ∪ U)
+                const added = F.filter(token => !Aset.has(token) && !Uset.has(token));
+
+                const newUserItems = Array.from(new Set([...keptUser, ...added]));
+
+                // Формируем payload для backend
+                const payload = {
+                    item_type: itemType,
+                    items: F,
+                    deleted_from_auto: deletedFromAuto
+                };
+
+                await apiRequest(
+                    `/routing/blocks/${routingType}/${blockId}/items`,
+                    'POST',
+                    payload
+                );
+
                 // Обновляем блок в pendingChanges (user-часть)
                 const blocks = pendingChanges[routingType].blocks;
                 const blockIndex = blocks.findIndex(b => b.id === blockId);
@@ -219,26 +257,24 @@ async function editBlockItems(routingType, blockId, itemType) {
                     const targetBlock = blocks[blockIndex];
                     if (itemType === 'IPS') {
                         if (!targetBlock.subnets) targetBlock.subnets = {};
-                        targetBlock.subnets.user = editedItems;
+                        targetBlock.subnets.user = newUserItems;
                     } else if (itemType === 'HOSTS') {
                         if (!targetBlock.hosts) targetBlock.hosts = {};
-                        targetBlock.hosts.user = editedItems;
+                        targetBlock.hosts.user = newUserItems;
                     }
                     pendingChanges[routingType].modified = true;
-                    
-                    showToast('Элементы блока изменены (изменения не сохранены)');
-                    delete window.currentRoutingEdit;
-                    // Восстанавливаем функции
-                    window.loadConfigEditor = originalLoadConfigEditor;
-                    window.saveConfigEditor = originalSaveConfigEditor;
-                    setTimeout(() => {
-                        closeConfigEditor();
-                        // Перезагружаем блоки с использованием pending изменений
-                        loadRoutingBlocks(routingType, true);
-                    }, 1000);
-                } else {
-                    showToast('Ошибка: блок не найден в накопленных изменениях', 3000);
                 }
+
+                showToast('Элементы блока изменены (изменения сохранены)', 3000);
+                delete window.currentRoutingEdit;
+                // Восстанавливаем функции
+                window.loadConfigEditor = originalLoadConfigEditor;
+                window.saveConfigEditor = originalSaveConfigEditor;
+                setTimeout(() => {
+                    closeConfigEditor();
+                    // Перезагружаем блоки с использованием pending изменений
+                    loadRoutingBlocks(routingType, true);
+                }, 1000);
             } catch (error) {
                 showToast('Ошибка при сохранении: ' + error.message, 3000);
             }
