@@ -48,40 +48,19 @@
 
     <div class="card" style="margin-top: 20px;">
         <div class="card-header">
-            <h2>Выборочный роутинг пакетов с определённой маркой на sing-box</h2>
+            <h2>Выборочный роутинг пакетов с определённого интерфейса на sing-box</h2>
         </div>
         <div class="card-content">
             <div class="form-row" style="align-items: center; flex-wrap: wrap; gap: 10px;">
-                <label for="singbox-route-by-mark-select">Марка:</label>
+                <label for="singbox-route-by-mark-select">Интерфейс:</label>
                 <select id="singbox-route-by-mark-select" class="form-input" style="min-width: 140px;">
                     <option value="">— загрузка —</option>
                 </select>
                 <span id="singbox-route-by-mark-status" class="value" style="display: none;"></span>
-                <button class="btn btn-secondary" type="button" onclick="openMarkRulesModal()" style="margin-left: auto;">Показывать все правила маркировки</button>
             </div>
             <div class="card-actions" style="margin-top: 12px;">
                 <button class="btn btn-primary" type="button" id="singbox-route-by-mark-enable-btn" onclick="routeByMarkEnable()">Включить</button>
                 <button class="btn btn-secondary" type="button" id="singbox-route-by-mark-disable-btn" onclick="routeByMarkDisable()">Выключить</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="markRulesModal" class="modal">
-        <div class="modal-content logs-viewer-modal">
-            <div class="modal-header">
-                <h2>Правила маркировки (iptables-save | grep MARK)</h2>
-                <span class="close" onclick="closeMarkRulesModal()">&times;</span>
-            </div>
-            <div class="modal-body">
-                <div class="form-group" style="margin-bottom: 10px;">
-                    <button class="btn btn-secondary" onclick="loadMarkRulesModal()">Обновить</button>
-                </div>
-                <div class="form-group" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
-                    <textarea id="markRulesModalText" rows="25" class="form-input logs-viewer-textarea" readonly style="font-family: monospace; font-size: 12px;"></textarea>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeMarkRulesModal()">Закрыть</button>
             </div>
         </div>
     </div>

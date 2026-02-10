@@ -3,8 +3,8 @@
 # NDM netfilter hook for hotspot VPN.
 # Called by Keenetic NDM during firewall (iptables) apply procedure.
 # NDM can set env var "table" to current iptables table (mangle/filter/nat/...).
-# Логика: дёргает route-by-mark.sh — sync (восстановить правило по state) или delmark (снять правило и очистить state).
-# Марку задаёт только пользователь через route-by-mark.sh addmark <value>.
+# Логика: дёргает route-by-mark.sh — sync (восстановить правила по state)
+# или delrule (снять правила и очистить state) для выбранного интерфейса.
 
 case "${table:-}" in
   ""|mangle|filter)
@@ -18,7 +18,7 @@ esac
 cmd="sync"
 case "${1:-}" in
   stop|ifdown|wandown)
-    cmd="delmark"
+    cmd="delrule"
     ;;
   start|ifup|wanup|restart|reload|"")
     cmd="sync"

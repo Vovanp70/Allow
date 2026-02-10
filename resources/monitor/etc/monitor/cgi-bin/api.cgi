@@ -755,20 +755,20 @@ EOF
     printf '{"lines":[%s]}\n' "$_json_lines"
 }
 
-# --- /singbox/route-by-mark/status GET (текущая активная марка из route-by-mark.state) ---
+# --- /singbox/route-by-mark/status GET (текущий активный интерфейс из route-by-mark.state) ---
 ROUTE_BY_MARK_STATE="/opt/etc/allow/route-by-mark.state"
 route_singbox_route_by_mark_status() {
-    _current="nomark"
+    _current="none"
     if [ -f "$ROUTE_BY_MARK_STATE" ]; then
-        _line="$(grep '^MARK=' "$ROUTE_BY_MARK_STATE" 2>/dev/null | head -1)"
-        [ -n "$_line" ] && _current="${_line#MARK=}"
+        _line="$(grep '^IFACE_SRC=' "$ROUTE_BY_MARK_STATE" 2>/dev/null | head -1)"
+        [ -n "$_line" ] && _current="${_line#IFACE_SRC=}"
     fi
-    [ -z "$_current" ] && _current="nomark"
+    [ -z "$_current" ] && _current="none"
     cgi_header
-    printf '{"current_mark":"%s"}\n' "$(json_esc "$_current")"
+    printf '{"current_iface":"%s"}\n' "$(json_esc "$_current")"
 }
 
-# --- /singbox/route-by-mark POST (addmark <mark> | delmark) ---
+# --- /singbox/route-by-mark POST (addrule <iface> | delrule) ---
 route_singbox_route_by_mark_post() {
     ROUTE_BY_MARK_SCRIPT="${ETC_ALLOW}/route-by-mark.sh"
     [ ! -x "$ROUTE_BY_MARK_SCRIPT" ] && [ -x "${ETC_ALLOW}/markalltovpn/route-by-mark.sh" ] && ROUTE_BY_MARK_SCRIPT="${ETC_ALLOW}/markalltovpn/route-by-mark.sh"
@@ -781,26 +781,33 @@ route_singbox_route_by_mark_post() {
     fi
     _body="$(echo "$body" | tr -d '\n\r')"
     _action="$(echo "$_body" | sed -n 's/.*"action"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+    _iface="$(echo "$_body" | sed -n 's/.*"iface"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
     _mark="$(echo "$_body" | sed -n 's/.*"mark"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+    # Для обратной совместимости: если iface не передали, но есть mark — используем его как iface.
+    [ -z "$_iface" ] && _iface="$_mark"
     _out=""
-    if [ "$_action" = "addmark" ]; then
-        if [ -z "$_mark" ]; then
+    case "$_action" in
+        addrule|addiface|addmark)
+            if [ -z "$_iface" ]; then
+                status_header 400
+                cgi_header
+                printf '{"success":false,"error":"iface required for addrule"}\n'
+                return 0
+            fi
+            _out="$("$ROUTE_BY_MARK_SCRIPT" addrule "$_iface" 2>&1)"
+            _ret=$?
+            ;;
+        delrule|deliface|delmark)
+            _out="$("$ROUTE_BY_MARK_SCRIPT" delrule 2>&1)"
+            _ret=$?
+            ;;
+        *)
             status_header 400
             cgi_header
-            printf '{"success":false,"error":"mark required for addmark"}\n'
+            printf '{"success":false,"error":"action must be addrule or delrule"}\n'
             return 0
-        fi
-        _out="$("$ROUTE_BY_MARK_SCRIPT" addmark "$_mark" 2>&1)"
-        _ret=$?
-    elif [ "$_action" = "delmark" ]; then
-        _out="$("$ROUTE_BY_MARK_SCRIPT" delmark 2>&1)"
-        _ret=$?
-    else
-        status_header 400
-        cgi_header
-        printf '{"success":false,"error":"action must be addmark or delmark"}\n'
-        return 0
-    fi
+            ;;
+    esac
     cgi_header
     if command -v jq >/dev/null 2>&1; then
         _out_esc="$(printf '%s' "$_out" | jq -Rs .)"
