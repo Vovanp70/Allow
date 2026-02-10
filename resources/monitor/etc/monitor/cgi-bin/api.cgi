@@ -236,6 +236,101 @@ route_routing_blocks_get() {
     printf '}'
 }
 
+# POST /routing/blocks/<routingType>/<blockId>/items  -> обновление *_user.txt
+route_routing_block_items_post() {
+    # PATH_INFO имеет вид routing/blocks/<routingType>/<blockId>/items
+    _pi="$PATH_INFO"
+    _sub="${_pi#routing/blocks/}"
+    [ -z "$_sub" ] && { status_header 400; cgi_header; printf '{"success":false,"error":"routingType required"}\n'; return 0; }
+
+    _routing_type="${_sub%%/*}"
+    _rest="${_sub#${_routing_type}}"
+    _rest="${_rest#/}"
+
+    # _rest теперь "<blockId>/items" или только "<blockId>"
+    _block_id="${_rest%%/*}"
+    _suffix="${_rest#${_block_id}}"
+    _suffix="${_suffix#/}"
+
+    if [ "$_suffix" != "items" ]; then
+        status_header 400
+        cgi_header
+        printf '{"success":false,"error":"invalid items path"}\n'
+        return 0
+    fi
+
+    _dir="$(get_routing_dir_for_type "$_routing_type")"
+    if [ -z "$_dir" ] || [ ! -d "$_dir" ]; then
+        status_header 404
+        cgi_header
+        printf '{"success":false,"error":"Unknown routing type or directory not found"}\n'
+        return 0
+    fi
+
+    _block_name="$_block_id"
+
+    # Разбираем JSON body простым grep/sed: hosts_user и subnets_user (массив строк)
+    # Формат ожидается: {"hosts_user":["a","b"],"subnets_user":["1.1.1.1",...]}
+
+    _body="$body"
+
+    # Вспомогательная функция: вытащить массив строк из JSON-поля
+    get_array_field() {
+        _field="$1"
+        printf '%s\n' "$_body" | sed -n "s/.*\"${_field}\"[[:space:]]*:[[:space:]]*\[\(.*\)\].*/\1/p" | sed 's/[[:space:]]//g'
+    }
+
+    _hosts_raw="$(get_array_field "hosts_user")"
+    _subnets_raw="$(get_array_field "subnets_user")"
+
+    write_list_from_raw_array() {
+        _raw="$1"
+        _file="$2"
+        # _raw имеет вид \"val1\",\"val2\" или "val1","val2"
+        : >"$_file.tmp"
+        if [ -n "$_raw" ]; then
+            printf '%s\n' "$_raw" | tr ',' '\n' | sed 's/^"//;s/"$//' | sed 's/\\n/\n/g' | while IFS= read -r _line; do
+                _norm="$(printf '%s\n' "$_line" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//')"
+                [ -z "$_norm" ] && continue
+                printf '%s\n' "$_norm" >>"$_file.tmp"
+            done
+        fi
+        if [ -f "$_file.tmp" ]; then
+            mv "$_file.tmp" "$_file" 2>/dev/null || rm -f "$_file.tmp" 2>/dev/null || true
+        fi
+    }
+
+    # Обновляем hosts_user и subnets_user, если поля присутствуют
+    if echo "$_body" | grep -q '"hosts_user"' 2>/dev/null; then
+        write_list_from_raw_array "$_hosts_raw" "${_dir}/${_block_name}_hosts_user.txt"
+    fi
+    if echo "$_body" | grep -q '"subnets_user"' 2>/dev/null; then
+        write_list_from_raw_array "$_subnets_raw" "${_dir}/${_block_name}_subnets_user.txt"
+    fi
+
+    cgi_header
+    printf '{"success":true}\n'
+}
+
+# POST /routing/blocks/<routingType> -> заглушка сохранения порядка/переноса блоков
+route_routing_blocks_post() {
+    # На первом этапе просто принимаем тело и возвращаем success
+    # В будущем здесь можно реализовать физическое перемещение файлов между каталогами.
+    cgi_header
+    printf '{"success":true}\n'
+}
+
+# POST /routing/apply -> пересборка ipset/dnsmasq из списков
+route_routing_apply_post() {
+    # Минимальная реализация: вызвать process-hosts.sh, если он существует
+    PROCESS_HOSTS_SCRIPT="${ETC_ALLOW}/dnsmasq-full/process-hosts.sh"
+    if [ -x "$PROCESS_HOSTS_SCRIPT" ] || [ -f "$PROCESS_HOSTS_SCRIPT" ]; then
+        LISTS_BASE="${ROUTING_LISTS_BASE}" sh "$PROCESS_HOSTS_SCRIPT" >/dev/null 2>&1 || true
+    fi
+    cgi_header
+    printf '{"success":true}\n'
+}
+
 # --- Parse KEY=value from script output ---
 get_kv() {
     _key="$1"
@@ -1671,8 +1766,9 @@ main() {
         singbox/route-by-mark/status)        path="/singbox/route-by-mark/status" ;;
         singbox/route-by-mark/iptables-rules) path="/singbox/route-by-mark/iptables-rules" ;;
         singbox/route-by-mark)              path="/singbox/route-by-mark" ;;
-        routing/blocks/*) path="/routing/blocks" ;;
-        routing/apply)    path="/routing/apply" ;;
+        routing/blocks/*/items) path="/routing/block-items" ;;
+        routing/blocks/*)        path="/routing/blocks" ;;
+        routing/apply)           path="/routing/apply" ;;
         *)           path="/unknown" ;;
     esac
     # #region agent log
@@ -1883,16 +1979,20 @@ main() {
         /singbox/route-by-mark)
             [ "$REQUEST_METHOD" = "POST" ] && route_singbox_route_by_mark_post "$body" || json_404
             ;;
+        /routing/block-items)
+            [ "$REQUEST_METHOD" = "POST" ] && route_routing_block_items_post || json_404
+            ;;
         /routing/blocks)
             if [ "$REQUEST_METHOD" = "GET" ]; then
                 route_routing_blocks_get
+            elif [ "$REQUEST_METHOD" = "POST" ]; then
+                route_routing_blocks_post
             else
                 json_404
             fi
             ;;
         /routing/apply)
-            # Реализация /routing/apply (пересборка ipset/dnsmasq) будет добавлена отдельно
-            json_404
+            [ "$REQUEST_METHOD" = "POST" ] && route_routing_apply_post || json_404
             ;;
         *)
             json_404

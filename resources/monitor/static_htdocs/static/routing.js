@@ -83,38 +83,17 @@ function renderBlocks(container, blocks, routingType) {
     });
 }
 
-// Проверка, является ли строка IP-адресом
-function isIP(item) {
-    const itemClean = item.trim();
-    // IPv4: 192.168.1.1 или 10.0.0.0/8
-    if (/^(\d{1,3}\.){3}\d{1,3}(\/\d{1,2})?$/.test(itemClean)) {
-        return true;
-    }
-    // IPv6: содержит : и /
-    if (itemClean.includes(':') && itemClean.includes('/')) {
-        return true;
-    }
-    return false;
-}
-
-// Подсчет IP и хостов в блоке
-function countItemsByType(items) {
-    let ipsCount = 0;
-    let hostsCount = 0;
+// Подсчет IP и хостов в блоке (новая модель: hosts/subnets + auto/user)
+function countItemsForNewModel(block) {
+    const hostsAuto = (block.hosts && Array.isArray(block.hosts.auto)) ? block.hosts.auto : [];
+    const hostsUser = (block.hosts && Array.isArray(block.hosts.user)) ? block.hosts.user : [];
+    const subnetsAuto = (block.subnets && Array.isArray(block.subnets.auto)) ? block.subnets.auto : [];
+    const subnetsUser = (block.subnets && Array.isArray(block.subnets.user)) ? block.subnets.user : [];
     
-    if (!items || !Array.isArray(items)) {
-        return { ips: 0, hosts: 0 };
-    }
-    
-    items.forEach(item => {
-        if (isIP(item)) {
-            ipsCount++;
-        } else {
-            hostsCount++;
-        }
-    });
-    
-    return { ips: ipsCount, hosts: hostsCount };
+    return {
+        ips: subnetsAuto.length + subnetsUser.length,
+        hosts: hostsAuto.length + hostsUser.length
+    };
 }
 
 // Создание элемента блока
@@ -132,8 +111,7 @@ function createBlockElement(block, routingType) {
         div.addEventListener('dragend', handleDragEnd);
     }
     
-    const items = block.items || [];
-    const counts = countItemsByType(items);
+    const counts = countItemsForNewModel(block);
     
     div.innerHTML = `
         <div class="block-header">
@@ -161,7 +139,6 @@ async function editBlockItems(routingType, blockId, itemType) {
         }
         
         const block = blockData.block;
-        const allItems = block.items || [];
         
         // UNNAMED блок нельзя редактировать
         if (block.is_unnamed) {
@@ -169,12 +146,12 @@ async function editBlockItems(routingType, blockId, itemType) {
             return;
         }
         
-        // Фильтруем элементы по типу
+        // Берем только user-элементы по типу
         let filteredItems = [];
         if (itemType === 'IPS') {
-            filteredItems = allItems.filter(item => isIP(item));
+            filteredItems = (block.subnets && Array.isArray(block.subnets.user)) ? block.subnets.user : [];
         } else if (itemType === 'HOSTS') {
-            filteredItems = allItems.filter(item => !isIP(item));
+            filteredItems = (block.hosts && Array.isArray(block.hosts.user)) ? block.hosts.user : [];
         }
         
         const title = `${block.name} - ${itemType}`;
@@ -185,8 +162,7 @@ async function editBlockItems(routingType, blockId, itemType) {
         window.currentRoutingEdit = {
             routingType: routingType,
             blockId: blockId,
-            itemType: itemType,
-            allItems: allItems  // Сохраняем все элементы для объединения при сохранении
+            itemType: itemType
         };
         
         // Переопределяем loadConfigEditor ПЕРЕД вызовом openConfigEditor
@@ -221,21 +197,9 @@ async function editBlockItems(routingType, blockId, itemType) {
                 return originalSaveConfigEditor();
             }
             
-            const { routingType, blockId, itemType, allItems } = window.currentRoutingEdit;
+            const { routingType, blockId, itemType } = window.currentRoutingEdit;
             
             try {
-                // Объединяем отредактированные элементы с элементами другого типа
-                let finalItems = [];
-                if (itemType === 'IPS') {
-                    // Берем отредактированные IP и все хосты из оригинала
-                    const originalHosts = allItems.filter(item => !isIP(item));
-                    finalItems = [...editedItems, ...originalHosts];
-                } else if (itemType === 'HOSTS') {
-                    // Берем отредактированные хосты и все IP из оригинала
-                    const originalIPs = allItems.filter(item => isIP(item));
-                    finalItems = [...originalIPs, ...editedItems];
-                }
-                
                 // Инициализируем pendingChanges если нужно
                 if (pendingChanges[routingType] === null) {
                     const data = await apiRequest(`/routing/blocks/${routingType}`);
@@ -248,11 +212,18 @@ async function editBlockItems(routingType, blockId, itemType) {
                     }
                 }
                 
-                // Обновляем блок в pendingChanges
+                // Обновляем блок в pendingChanges (user-часть)
                 const blocks = pendingChanges[routingType].blocks;
                 const blockIndex = blocks.findIndex(b => b.id === blockId);
                 if (blockIndex !== -1) {
-                    blocks[blockIndex].items = finalItems;
+                    const targetBlock = blocks[blockIndex];
+                    if (itemType === 'IPS') {
+                        if (!targetBlock.subnets) targetBlock.subnets = {};
+                        targetBlock.subnets.user = editedItems;
+                    } else if (itemType === 'HOSTS') {
+                        if (!targetBlock.hosts) targetBlock.hosts = {};
+                        targetBlock.hosts.user = editedItems;
+                    }
                     pendingChanges[routingType].modified = true;
                     
                     showToast('Элементы блока изменены (изменения не сохранены)');
@@ -560,7 +531,11 @@ async function validateRoutingBlocks() {
     const itemToBlocks = {}; // item -> {originalItem: "...", blocks: Set/Map}
     
     allBlocks.forEach(block => {
-        const items = block.items || [];
+        const hostsAuto = (block.hosts && Array.isArray(block.hosts.auto)) ? block.hosts.auto : [];
+        const hostsUser = (block.hosts && Array.isArray(block.hosts.user)) ? block.hosts.user : [];
+        const subnetsAuto = (block.subnets && Array.isArray(block.subnets.auto)) ? block.subnets.auto : [];
+        const subnetsUser = (block.subnets && Array.isArray(block.subnets.user)) ? block.subnets.user : [];
+        const items = [...hostsAuto, ...hostsUser, ...subnetsAuto, ...subnetsUser];
         const blockKey = `${block.routingType}:${block.id}:${block.name}`;
         
         items.forEach(item => {
@@ -738,7 +713,14 @@ function fixInternalDuplicates(blockInfo, duplicates) {
     
     // Удаляем дубликаты, оставляя только первое вхождение
     const seen = {};
-    block.items = block.items.filter(item => {
+    const hostsAuto = (block.hosts && Array.isArray(block.hosts.auto)) ? block.hosts.auto : [];
+    const hostsUser = (block.hosts && Array.isArray(block.hosts.user)) ? block.hosts.user : [];
+    const subnetsAuto = (block.subnets && Array.isArray(block.subnets.auto)) ? block.subnets.auto : [];
+    const subnetsUser = (block.subnets && Array.isArray(block.subnets.user)) ? block.subnets.user : [];
+
+    const allItems = [...hostsAuto, ...hostsUser, ...subnetsAuto, ...subnetsUser];
+
+    const filtered = allItems.filter(item => {
         const normalizedItem = item.trim().toLowerCase();
         if (!normalizedItem) return false;
         
@@ -751,6 +733,18 @@ function fixInternalDuplicates(blockInfo, duplicates) {
         return true;
     });
     
+    // Разносим обратно по hosts/subnets, предполагая что структура не менялась,
+    // а мы лишь удалили лишние повторы. Для простоты сохраняем только уникальные элементы
+    // в тех же массивах user, auto оставляем как есть.
+    block.hosts = block.hosts || {};
+    block.subnets = block.subnets || {};
+    block.hosts.auto = hostsAuto;
+    block.subnets.auto = subnetsAuto;
+    // Все оставшиеся элементы, которые были в hostsUser/subnetsUser, остаются там,
+    // так как мы удаляли только дубли по значению.
+    block.hosts.user = hostsUser.filter((item, index, self) => self.indexOf(item) === index);
+    block.subnets.user = subnetsUser.filter((item, index, self) => self.indexOf(item) === index);
+
     pendingChanges[routingType].modified = true;
 }
 
