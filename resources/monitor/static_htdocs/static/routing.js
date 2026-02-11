@@ -664,7 +664,6 @@ function showMoveMenu(event, routingType, blockId) {
 document.addEventListener('click', function(e) {
     if (!e.target.closest('.block-drag-handle') && !e.target.closest('.block-move-menu-fixed')) {
         closeMoveMenu();
-        });
     }
 });
 
