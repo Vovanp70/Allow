@@ -1061,6 +1061,19 @@ a.menu-item {
     gap: 10px;
 }
 
+.block-delete-btn {
+    margin-left: auto;
+    padding: 2px 8px;
+    font-size: 14px;
+    line-height: 1;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
+.block-delete-btn:hover {
+    opacity: 1;
+}
+
 .block-drag-handle {
     cursor: move;
     color: #6e6e73;

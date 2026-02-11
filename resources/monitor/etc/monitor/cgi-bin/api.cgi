@@ -616,6 +616,76 @@ route_routing_blocks_post() {
     printf '{"success":true}\n'
 }
 
+# DELETE /routing/blocks/<routingType>/<blockId> -> удаление блока
+route_routing_block_delete() {
+    _pi="$PATH_INFO"
+    _sub="${_pi#routing/blocks/}"
+    [ -z "$_sub" ] && { status_header 400; cgi_header; printf '{"success":false,"error":"routingType required"}\n'; return 0; }
+
+    _routing_type="${_sub%%/*}"
+    _rest="${_sub#${_routing_type}}"
+    _rest="${_rest#/}"
+    _block_id="${_rest%%/*}"
+    
+    [ -z "$_block_id" ] && { status_header 400; cgi_header; printf '{"success":false,"error":"blockId required"}\n'; return 0; }
+
+    _dir="$(get_routing_dir_for_type "$_routing_type")"
+    if [ -z "$_dir" ] || [ ! -d "$_dir" ]; then
+        status_header 404
+        cgi_header
+        printf '{"success":false,"error":"Unknown routing type or directory not found"}\n'
+        return 0
+    fi
+
+    _block_name="$_block_id"
+    
+    # Проверяем, есть ли файлы блока
+    _has_files=0
+    for _suf in "_hosts_auto.txt" "_hosts_user.txt" "_subnets_auto.txt" "_subnets_user.txt"; do
+        [ -f "${_dir}/${_block_name}${_suf}" ] && _has_files=1 && break
+    done
+    
+    if [ "$_has_files" -eq 0 ]; then
+        status_header 404
+        cgi_header
+        printf '{"success":false,"error":"Block not found"}\n'
+        return 0
+    fi
+    
+    # Содержимое auto-файлов добавляем в solitary
+    SOLITARY_DIR="${ROUTING_LISTS_BASE}/del-usr"
+    SOLITARY_FILE="${SOLITARY_DIR}/solitary.txt"
+    mkdir -p "$SOLITARY_DIR" 2>/dev/null || true
+    
+    TMP_AUTO_CONTENT="/tmp/routing-del-auto-$$"
+    : >"$TMP_AUTO_CONTENT"
+    
+    for _auto_file in "${_dir}/${_block_name}_hosts_auto.txt" "${_dir}/${_block_name}_subnets_auto.txt"; do
+        if [ -f "$_auto_file" ]; then
+            cat "$_auto_file" >>"$TMP_AUTO_CONTENT" 2>/dev/null || true
+        fi
+    done
+    
+    # Добавляем в solitary
+    if [ -s "$TMP_AUTO_CONTENT" ]; then
+        if [ -f "$SOLITARY_FILE" ]; then
+            cat "$SOLITARY_FILE" "$TMP_AUTO_CONTENT" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' 2>/dev/null | grep -v '^$' | sort -u >"${SOLITARY_FILE}.tmp" 2>/dev/null || true
+            mv "${SOLITARY_FILE}.tmp" "$SOLITARY_FILE" 2>/dev/null || rm -f "${SOLITARY_FILE}.tmp" 2>/dev/null || true
+        else
+            sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' "$TMP_AUTO_CONTENT" 2>/dev/null | grep -v '^$' | sort -u >"$SOLITARY_FILE" 2>/dev/null || true
+        fi
+    fi
+    rm -f "$TMP_AUTO_CONTENT" 2>/dev/null || true
+    
+    # Удаляем все файлы блока
+    for _suf in "_hosts_auto.txt" "_hosts_user.txt" "_subnets_auto.txt" "_subnets_user.txt"; do
+        rm -f "${_dir}/${_block_name}${_suf}" 2>/dev/null || true
+    done
+    
+    cgi_header
+    printf '{"success":true}\n'
+}
+
 # POST /routing/apply -> пересборка ipset/dnsmasq из списков
 route_routing_apply_post() {
     # Минимальная реализация: вызвать process-hosts.sh, если он существует
@@ -2283,6 +2353,8 @@ main() {
                 route_routing_blocks_get
             elif [ "$REQUEST_METHOD" = "POST" ]; then
                 route_routing_blocks_post
+            elif [ "$REQUEST_METHOD" = "DELETE" ]; then
+                route_routing_block_delete
             else
                 json_404
             fi

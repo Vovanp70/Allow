@@ -120,6 +120,7 @@ function createBlockElement(block, routingType) {
         <div class="block-header">
             ${!block.is_unnamed ? '<div class="block-drag-handle" title="Перетащите для перемещения в другую колонку">⋮⋮</div>' : ''}
             <h3 class="block-title">${escapeHtml(block.name)}</h3>
+            ${!block.is_unnamed ? `<button class="btn btn-danger btn-sm block-delete-btn" onclick="deleteBlock('${routingType}', '${block.id}', '${escapeHtml(block.name)}')" title="Удалить блок">✕</button>` : ''}
         </div>
         <div class="block-actions">
             ${!block.is_unnamed ? `<button class="btn btn-secondary btn-sm" onclick="editBlockItems('${routingType}', '${block.id}', 'IPS')">IPS - ${counts.ips}</button>` : ''}
@@ -462,6 +463,36 @@ async function addBlock(routingType) {
     } catch (error) {
         console.error('Error adding block:', error);
         showToast('Ошибка при добавлении блока: ' + error.message, 3000);
+    }
+}
+
+// Удаление блока
+async function deleteBlock(routingType, blockId, blockName) {
+    // Подтверждение удаления
+    const confirmed = confirm(`Удалить блок "${blockName}"?\n\nВсе user-элементы будут удалены.\nAuto-элементы будут перемещены в solitary (не вернутся при sync).`);
+    
+    if (!confirmed) {
+        return;
+    }
+    
+    try {
+        const result = await apiRequest(`/routing/blocks/${routingType}/${blockId}`, 'DELETE');
+        
+        if (result.success) {
+            showToast(`Блок "${blockName}" удалён`, 2000);
+            
+            // Сбрасываем pending для этого routing type
+            pendingChanges[routingType] = null;
+            originalBlocks[routingType] = null;
+            
+            // Перезагружаем блоки
+            loadRoutingBlocks(routingType);
+        } else {
+            showToast('Ошибка: ' + (result.error || 'Не удалось удалить блок'), 3000);
+        }
+    } catch (error) {
+        console.error('Error deleting block:', error);
+        showToast('Ошибка при удалении блока: ' + error.message, 3000);
     }
 }
 
