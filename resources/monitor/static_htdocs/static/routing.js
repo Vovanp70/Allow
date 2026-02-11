@@ -452,6 +452,33 @@ function closeAddBlockModal() {
     addBlockRoutingType = null;
 }
 
+// Проверить, существует ли блок с таким ID
+async function isBlockIdExists(blockId) {
+    const routingTypes = ['direct', 'bypass', 'vpn'];
+    
+    for (const rt of routingTypes) {
+        // Проверяем в pendingChanges
+        if (pendingChanges[rt] && pendingChanges[rt].blocks) {
+            if (pendingChanges[rt].blocks.some(b => b.id === blockId)) {
+                return true;
+            }
+        } else {
+            // Загружаем с сервера
+            try {
+                const data = await apiRequest(`/routing/blocks/${rt}`);
+                if (data.success && data.blocks) {
+                    if (data.blocks.some(b => b.id === blockId)) {
+                        return true;
+                    }
+                }
+            } catch (e) {
+                console.error('Error checking blocks:', e);
+            }
+        }
+    }
+    return false;
+}
+
 // Подтвердить добавление блока
 async function submitAddBlock() {
     const input = document.getElementById('addBlockName');
@@ -462,9 +489,36 @@ async function submitAddBlock() {
         return;
     }
     
+    // Проверка длины имени
+    if (name.length > 50) {
+        showToast('Название слишком длинное (макс. 50 символов)', 3000);
+        return;
+    }
+    
+    // Проверка на недопустимые символы
+    if (/[<>:"/\\|?*]/.test(name)) {
+        showToast('Название содержит недопустимые символы', 3000);
+        return;
+    }
+    
     const routingType = addBlockRoutingType;
     if (!routingType) {
         closeAddBlockModal();
+        return;
+    }
+    
+    // Генерируем ID и проверяем уникальность
+    const blockId = generateBlockId(name);
+    
+    if (!blockId) {
+        showToast('Не удалось создать ID из названия', 3000);
+        return;
+    }
+    
+    // Проверка на занятость ID
+    const exists = await isBlockIdExists(blockId);
+    if (exists) {
+        showToast(`Блок с таким названием уже существует`, 3000);
         return;
     }
     
@@ -488,7 +542,7 @@ async function submitAddBlock() {
         
         // Создаем новый блок (по умолчанию HOSTS, можно редактировать потом)
         const newBlock = {
-            id: generateBlockId(name),
+            id: blockId,
             name: name,
             hosts: { auto: [], user: [] },
             subnets: { auto: [], user: [] }
