@@ -534,6 +534,7 @@ function escapeHtml(text) {
 // Обновление кнопки сохранения
 function updateSaveButton() {
     const saveBtn = document.getElementById('save-routing-changes-btn');
+    const hintEl = document.getElementById('routing-unsaved-hint');
     if (!saveBtn) return;
     
     // Проверяем, есть ли несохраненные изменения
@@ -542,11 +543,11 @@ function updateSaveButton() {
     );
     
     if (hasChanges) {
-        saveBtn.style.display = 'inline-block';
         saveBtn.disabled = false;
+        if (hintEl) hintEl.textContent = 'Есть несохранённые изменения';
     } else {
-        saveBtn.style.display = 'none';
         saveBtn.disabled = true;
+        if (hintEl) hintEl.textContent = '';
     }
 }
 

@@ -53,12 +53,15 @@
         <!-- Область контента -->
         <div class="content-area">
             
-<div class="routing-container">
-    <div class="routing-header" style="margin-bottom: 20px; display: flex; justify-content: flex-end; align-items: center;">
-        <button id="save-routing-changes-btn" class="btn btn-primary" onclick="saveAllRoutingChanges()" style="display: none;">
-            Сохранить изменения
-        </button>
-    </div>
+<div class="settings-page">
+    <header class="settings-page-header" role="banner">
+        <h1>Маршрутизация</h1>
+        <div class="settings-save-bar" id="routing-save-bar" aria-live="polite">
+            <span class="settings-unsaved-hint" id="routing-unsaved-hint"></span>
+            <button type="button" class="btn btn-primary" id="save-routing-changes-btn" onclick="saveAllRoutingChanges()" disabled>Сохранить</button>
+        </div>
+    </header>
+
     <div class="routing-columns">
         <!-- Колонка 1: Напрямую -->
         <div class="routing-column" id="direct-column">
