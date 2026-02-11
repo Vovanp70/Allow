@@ -125,6 +125,25 @@
     </div>
 </div>
 
+    
+    <!-- Модальное окно добавления блока -->
+    <div id="addBlockModal" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2 id="addBlockModalTitle">Добавить блок</h2>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="addBlockName">Название блока</label>
+                    <input type="text" id="addBlockName" class="form-input" placeholder="Введите название">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeAddBlockModal()">Отмена</button>
+                <button class="btn btn-primary" id="addBlockSubmitBtn" onclick="submitAddBlock()">Добавить</button>
+            </div>
+        </div>
+    </div>
 
 
     <!-- Переиспользуемые компоненты -->

@@ -428,14 +428,47 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// Добавление нового блока
-async function addBlock(routingType) {
-    const name = prompt('Введите название блока:');
-    if (!name || !name.trim()) {
+// Текущий routing type для добавления блока
+let addBlockRoutingType = null;
+
+// Открыть модальное окно добавления блока
+function addBlock(routingType) {
+    addBlockRoutingType = routingType;
+    const modal = document.getElementById('addBlockModal');
+    const input = document.getElementById('addBlockName');
+    if (modal && input) {
+        input.value = '';
+        modal.style.display = 'block';
+        setTimeout(() => input.focus(), 100);
+    }
+}
+
+// Закрыть модальное окно
+function closeAddBlockModal() {
+    const modal = document.getElementById('addBlockModal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+    addBlockRoutingType = null;
+}
+
+// Подтвердить добавление блока
+async function submitAddBlock() {
+    const input = document.getElementById('addBlockName');
+    const name = input ? input.value.trim() : '';
+    
+    if (!name) {
+        showToast('Введите название блока', 2000);
         return;
     }
     
-    const type = confirm('Выберите тип блока:\n\nOK - Хосты (HOSTS)\nОтмена - IP адреса (IPS)') ? 'HOSTS' : 'IPS';
+    const routingType = addBlockRoutingType;
+    if (!routingType) {
+        closeAddBlockModal();
+        return;
+    }
+    
+    closeAddBlockModal();
     
     try {
         // Инициализируем pendingChanges если нужно
@@ -453,12 +486,12 @@ async function addBlock(routingType) {
             }
         }
         
-        // Создаем новый блок
+        // Создаем новый блок (по умолчанию HOSTS, можно редактировать потом)
         const newBlock = {
             id: generateBlockId(name),
-            name: name.trim(),
-            type: type,
-            items: []
+            name: name,
+            hosts: { auto: [], user: [] },
+            subnets: { auto: [], user: [] }
         };
         
         // Добавляем к существующим блокам
@@ -474,6 +507,38 @@ async function addBlock(routingType) {
         showToast('Ошибка при добавлении блока: ' + error.message, 3000);
     }
 }
+
+// Обработка Enter и Escape в модальном окне
+document.addEventListener('DOMContentLoaded', function() {
+    const input = document.getElementById('addBlockName');
+    if (input) {
+        input.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                submitAddBlock();
+            }
+        });
+    }
+    
+    // Закрытие по клику вне модального окна
+    const modal = document.getElementById('addBlockModal');
+    if (modal) {
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                closeAddBlockModal();
+            }
+        });
+    }
+});
+
+// Закрытие модального окна по Escape
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        const modal = document.getElementById('addBlockModal');
+        if (modal && modal.style.display === 'block') {
+            closeAddBlockModal();
+        }
+    }
+});
 
 // Удаление блока
 async function deleteBlock(routingType, blockId, blockName) {
