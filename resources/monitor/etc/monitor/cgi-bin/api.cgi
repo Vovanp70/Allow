@@ -590,6 +590,7 @@ route_routing_blocks_post() {
         
         # Если файлов нет — ищем в других директориях и перемещаем
         if [ "$_has_files" -eq 0 ]; then
+            _found_anywhere=0
             for _src_dir in "${ROUTING_LISTS_BASE}/nonbypass" "${ROUTING_LISTS_BASE}/zapret" "${ROUTING_LISTS_BASE}/bypass"; do
                 [ "$_src_dir" = "$_target_dir" ] && continue
                 [ ! -d "$_src_dir" ] && continue
@@ -600,6 +601,7 @@ route_routing_blocks_post() {
                 done
                 
                 if [ "$_found" -eq 1 ]; then
+                    _found_anywhere=1
                     # Перемещаем все файлы блока
                     for _suf in "_hosts_auto.txt" "_hosts_user.txt" "_subnets_auto.txt" "_subnets_user.txt"; do
                         if [ -f "${_src_dir}/${_bid}${_suf}" ]; then
@@ -609,6 +611,12 @@ route_routing_blocks_post() {
                     break
                 fi
             done
+            
+            # Если блок не найден нигде — это новый блок, создаём пустые user-файлы
+            if [ "$_found_anywhere" -eq 0 ]; then
+                touch "${_target_dir}/${_bid}_hosts_user.txt" 2>/dev/null || true
+                touch "${_target_dir}/${_bid}_subnets_user.txt" 2>/dev/null || true
+            fi
         fi
     done
     
