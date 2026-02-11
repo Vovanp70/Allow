@@ -118,9 +118,18 @@ function createBlockElement(block, routingType) {
     
     div.innerHTML = `
         <div class="block-header">
-            ${!block.is_unnamed ? '<div class="block-drag-handle" title="Перетащите для перемещения в другую колонку">⋮⋮</div>' : ''}
+            ${!block.is_unnamed ? `
+                <div class="block-drag-handle" onclick="toggleMoveMenu(event, '${routingType}', '${block.id}')" title="Переместить блок">
+                    ⋮⋮
+                    <div class="block-move-menu" id="move-menu-${block.id}">
+                        <div class="block-move-menu-item" onclick="moveBlockTo(event, '${block.id}', '${routingType}', 'direct')">→ Напрямую</div>
+                        <div class="block-move-menu-item" onclick="moveBlockTo(event, '${block.id}', '${routingType}', 'bypass')">→ Встроенные инструменты</div>
+                        <div class="block-move-menu-item" onclick="moveBlockTo(event, '${block.id}', '${routingType}', 'vpn')">→ VPN</div>
+                    </div>
+                </div>
+            ` : ''}
             <h3 class="block-title">${escapeHtml(block.name)}</h3>
-            ${!block.is_unnamed ? `<button class="btn btn-danger btn-sm block-delete-btn" onclick="deleteBlock('${routingType}', '${block.id}', '${escapeHtml(block.name)}')" title="Удалить блок">✕</button>` : ''}
+            ${!block.is_unnamed ? `<button class="block-delete-btn" onclick="deleteBlock('${routingType}', '${block.id}', '${escapeHtml(block.name)}')" title="Удалить блок">✕</button>` : ''}
         </div>
         <div class="block-actions">
             ${!block.is_unnamed ? `<button class="btn btn-secondary btn-sm" onclick="editBlockItems('${routingType}', '${block.id}', 'IPS')">IPS - ${counts.ips}</button>` : ''}
@@ -493,6 +502,104 @@ async function deleteBlock(routingType, blockId, blockName) {
     } catch (error) {
         console.error('Error deleting block:', error);
         showToast('Ошибка при удалении блока: ' + error.message, 3000);
+    }
+}
+
+// Показать/скрыть меню перемещения блока
+function toggleMoveMenu(event, routingType, blockId) {
+    event.stopPropagation();
+    
+    // Закрываем все открытые меню
+    document.querySelectorAll('.block-move-menu.show').forEach(menu => {
+        if (menu.id !== `move-menu-${blockId}`) {
+            menu.classList.remove('show');
+        }
+    });
+    
+    const menu = document.getElementById(`move-menu-${blockId}`);
+    if (menu) {
+        menu.classList.toggle('show');
+    }
+}
+
+// Закрыть все меню при клике вне
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('.block-drag-handle')) {
+        document.querySelectorAll('.block-move-menu.show').forEach(menu => {
+            menu.classList.remove('show');
+        });
+    }
+});
+
+// Переместить блок в другую колонку
+async function moveBlockTo(event, blockId, fromRoutingType, toRoutingType) {
+    event.stopPropagation();
+    
+    // Закрываем меню
+    document.querySelectorAll('.block-move-menu.show').forEach(menu => {
+        menu.classList.remove('show');
+    });
+    
+    if (fromRoutingType === toRoutingType) {
+        showToast('Блок уже в этой колонке', 2000);
+        return;
+    }
+    
+    try {
+        // Инициализируем pendingChanges если нужно
+        if (pendingChanges[fromRoutingType] === null) {
+            const sourceData = await apiRequest(`/routing/blocks/${fromRoutingType}`);
+            if (sourceData.success) {
+                pendingChanges[fromRoutingType] = {
+                    blocks: JSON.parse(JSON.stringify(sourceData.blocks)),
+                    modified: false
+                };
+                originalBlocks[fromRoutingType] = JSON.parse(JSON.stringify(sourceData.blocks));
+            }
+        }
+        
+        if (pendingChanges[toRoutingType] === null) {
+            const targetData = await apiRequest(`/routing/blocks/${toRoutingType}`);
+            if (targetData.success) {
+                pendingChanges[toRoutingType] = {
+                    blocks: JSON.parse(JSON.stringify(targetData.blocks)),
+                    modified: false
+                };
+                originalBlocks[toRoutingType] = JSON.parse(JSON.stringify(targetData.blocks));
+            }
+        }
+        
+        // Находим блок в исходной колонке
+        const sourceBlocks = pendingChanges[fromRoutingType].blocks;
+        const block = sourceBlocks.find(b => b.id === blockId);
+        if (!block) {
+            throw new Error('Блок не найден');
+        }
+        
+        // Удаляем блок из исходной колонки
+        pendingChanges[fromRoutingType].blocks = sourceBlocks.filter(b => b.id !== blockId);
+        pendingChanges[fromRoutingType].modified = true;
+        
+        // Добавляем блок в целевую колонку
+        const targetBlocks = pendingChanges[toRoutingType].blocks || [];
+        targetBlocks.push(block);
+        pendingChanges[toRoutingType].blocks = targetBlocks;
+        pendingChanges[toRoutingType].modified = true;
+        
+        const targetNames = {
+            'direct': 'Напрямую',
+            'bypass': 'Встроенные инструменты',
+            'vpn': 'VPN'
+        };
+        showToast(`Блок перемещён в "${targetNames[toRoutingType]}" (не сохранено)`, 2000);
+        
+        // Перезагружаем обе колонки
+        loadRoutingBlocks(fromRoutingType, true);
+        loadRoutingBlocks(toRoutingType, true);
+        
+    } catch (error) {
+        console.error('Error moving block:', error);
+        showToast('Ошибка при перемещении: ' + error.message, 3000);
     }
 }
 
