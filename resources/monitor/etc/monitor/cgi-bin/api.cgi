@@ -118,7 +118,45 @@ routing_json_array_from_file() {
     printf ']'
 }
 
-# Построить JSON-объект блока по имени и директории
+# Подсчёт строк в файле (для summary; быстро, без чтения в JSON)
+routing_count_lines() {
+    _file="$1"
+    [ -f "$_file" ] && awk 'END{print NR+0}' "$_file" 2>/dev/null || echo 0
+}
+
+# Лёгкий объект блока для списка: id, name, routing_type, hosts_count, ips_count
+# Используется в GET /routing/blocks/<type> (список блоков)
+routing_print_block_summary() {
+    _rt="$1"
+    _name="$2"
+    _dir="$3"
+
+    _id_esc="$(json_esc "$_name")"
+    _name_esc="$(json_esc "$_name")"
+
+    _hosts_auto="${_dir}/${_name}_hosts_auto.txt"
+    _hosts_user="${_dir}/${_name}_hosts_user.txt"
+    _subnets_auto="${_dir}/${_name}_subnets_auto.txt"
+    _subnets_user="${_dir}/${_name}_subnets_user.txt"
+
+    _h_auto="$(routing_count_lines "$_hosts_auto")"
+    _h_user="$(routing_count_lines "$_hosts_user")"
+    _s_auto="$(routing_count_lines "$_subnets_auto")"
+    _s_user="$(routing_count_lines "$_subnets_user")"
+
+    _hosts_count="$((_h_auto + _h_user))"
+    _ips_count="$((_s_auto + _s_user))"
+
+    printf '{'
+    printf '"id":"%s",' "$_id_esc"
+    printf '"name":"%s",' "$_name_esc"
+    printf '"routing_type":"%s",' "$(json_esc "$_rt")"
+    printf '"hosts_count":%s,' "$_hosts_count"
+    printf '"ips_count":%s' "$_ips_count"
+    printf '}'
+}
+
+# Построить JSON-объект блока по имени и директории (полный: для одного блока)
 # Формат блока:
 # {
 #   "id": "<name>",
@@ -212,7 +250,7 @@ route_routing_blocks_get() {
             else
                 printf ','
             fi
-            routing_print_block_object "$_routing_type" "$_name" "$_dir"
+            routing_print_block_summary "$_routing_type" "$_name" "$_dir"
         done
 
         printf ']}'

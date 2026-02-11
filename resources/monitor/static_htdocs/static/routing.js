@@ -84,12 +84,15 @@ function renderBlocks(container, blocks, routingType) {
 }
 
 // Подсчет IP и хостов в блоке (новая модель: hosts/subnets + auto/user)
+// Список блоков приходит с hosts_count/ips_count; один блок — с массивами hosts/subnets
 function countItemsForNewModel(block) {
+    if (typeof block.hosts_count === 'number' && typeof block.ips_count === 'number') {
+        return { ips: block.ips_count, hosts: block.hosts_count };
+    }
     const hostsAuto = (block.hosts && Array.isArray(block.hosts.auto)) ? block.hosts.auto : [];
     const hostsUser = (block.hosts && Array.isArray(block.hosts.user)) ? block.hosts.user : [];
     const subnetsAuto = (block.subnets && Array.isArray(block.subnets.auto)) ? block.subnets.auto : [];
     const subnetsUser = (block.subnets && Array.isArray(block.subnets.user)) ? block.subnets.user : [];
-    
     return {
         ips: subnetsAuto.length + subnetsUser.length,
         hosts: hostsAuto.length + hostsUser.length
