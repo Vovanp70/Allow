@@ -96,8 +96,10 @@ get_routing_dir_for_type() {
 
 # Вывод JSON-массива строк на основе txt-файла
 # Нормализуем: убираем комментарии, пробелы, пустые строки
+# $2 (опционально) - файл-фильтр, элементы из которого исключаются
 routing_json_array_from_file() {
     _file="$1"
+    _filter_file="$2"
     printf '['
     if [ -f "$_file" ]; then
         _first=1
@@ -106,6 +108,10 @@ routing_json_array_from_file() {
             # Удаляем комментарии и лишние пробелы
             _norm="$(printf '%s\n' "$_line" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//')"
             [ -z "$_norm" ] && continue
+            # Если есть файл-фильтр и элемент в нём — пропускаем
+            if [ -n "$_filter_file" ] && [ -f "$_filter_file" ]; then
+                grep -Fxq "$_norm" "$_filter_file" 2>/dev/null && continue
+            fi
             _esc="$(json_esc "$_norm")"
             if [ "$_first" -eq 1 ]; then
                 _first=0
@@ -119,13 +125,46 @@ routing_json_array_from_file() {
 }
 
 # Подсчёт строк в файле (для summary; быстро, без чтения в JSON)
+# $2 (опционально) - файл-фильтр, элементы из которого исключаются из подсчёта
 routing_count_lines() {
     _file="$1"
-    [ -f "$_file" ] && awk 'END{print NR+0}' "$_file" 2>/dev/null || echo 0
+    _filter_file="$2"
+    if [ ! -f "$_file" ]; then
+        echo 0
+        return 0
+    fi
+    if [ -n "$_filter_file" ] && [ -f "$_filter_file" ]; then
+        # Подсчитываем строки, исключая те, что есть в фильтре
+        grep -Fxv -f "$_filter_file" "$_file" 2>/dev/null | grep -c . 2>/dev/null || echo 0
+    else
+        awk 'END{print NR+0}' "$_file" 2>/dev/null || echo 0
+    fi
+}
+
+# Собрать файл-фильтр для auto-списков: solitary + все user-элементы
+# Результат записывается в файл, путь к которому передаётся как $1
+routing_build_auto_filter() {
+    _out_file="$1"
+    : >"$_out_file"
+    
+    # Добавляем solitary
+    _solitary="${ROUTING_LISTS_BASE}/del-usr/solitary.txt"
+    [ -f "$_solitary" ] && cat "$_solitary" >>"$_out_file" 2>/dev/null || true
+    
+    # Добавляем все user-элементы из всех блоков всех routing types
+    for _rt_dir in "${ROUTING_LISTS_BASE}/nonbypass" "${ROUTING_LISTS_BASE}/zapret" "${ROUTING_LISTS_BASE}/bypass"; do
+        if [ -d "$_rt_dir" ]; then
+            for _uf in "$_rt_dir"/*_user.txt; do
+                [ -f "$_uf" ] && cat "$_uf" >>"$_out_file" 2>/dev/null || true
+            done
+        fi
+    done
+    sort -u "$_out_file" -o "$_out_file" 2>/dev/null || true
 }
 
 # Лёгкий объект блока для списка: id, name, routing_type, hosts_count, ips_count
 # Используется в GET /routing/blocks/<type> (список блоков)
+# Auto-списки фильтруются: исключаются элементы из solitary + user-списков
 routing_print_block_summary() {
     _rt="$1"
     _name="$2"
@@ -138,10 +177,14 @@ routing_print_block_summary() {
     _hosts_user="${_dir}/${_name}_hosts_user.txt"
     _subnets_auto="${_dir}/${_name}_subnets_auto.txt"
     _subnets_user="${_dir}/${_name}_subnets_user.txt"
+    
+    # Собираем файл-фильтр
+    _filter_file="/tmp/routing-summary-filter-$$"
+    routing_build_auto_filter "$_filter_file"
 
-    _h_auto="$(routing_count_lines "$_hosts_auto")"
+    _h_auto="$(routing_count_lines "$_hosts_auto" "$_filter_file")"
     _h_user="$(routing_count_lines "$_hosts_user")"
-    _s_auto="$(routing_count_lines "$_subnets_auto")"
+    _s_auto="$(routing_count_lines "$_subnets_auto" "$_filter_file")"
     _s_user="$(routing_count_lines "$_subnets_user")"
 
     _hosts_count="$((_h_auto + _h_user))"
@@ -154,6 +197,8 @@ routing_print_block_summary() {
     printf '"hosts_count":%s,' "$_hosts_count"
     printf '"ips_count":%s' "$_ips_count"
     printf '}'
+    
+    rm -f "$_filter_file" 2>/dev/null || true
 }
 
 # Построить JSON-объект блока по имени и директории (полный: для одного блока)
@@ -165,6 +210,7 @@ routing_print_block_summary() {
 #   "hosts":   { "auto": [...], "user": [...] },
 #   "subnets": { "auto": [...], "user": [...] }
 # }
+# Auto-списки фильтруются: исключаются элементы из solitary + user-списков
 routing_print_block_object() {
     _rt="$1"
     _name="$2"
@@ -177,6 +223,10 @@ routing_print_block_object() {
     _hosts_user="${_dir}/${_name}_hosts_user.txt"
     _subnets_auto="${_dir}/${_name}_subnets_auto.txt"
     _subnets_user="${_dir}/${_name}_subnets_user.txt"
+    
+    # Собираем файл-фильтр
+    _filter_file="/tmp/routing-block-filter-$$"
+    routing_build_auto_filter "$_filter_file"
 
     printf '{'
     printf '"id":"%s",' "$_id_esc"
@@ -184,18 +234,20 @@ routing_print_block_object() {
     printf '"routing_type":"%s",' "$(json_esc "$_rt")"
 
     printf '"hosts":{"auto":'
-    routing_json_array_from_file "$_hosts_auto"
+    routing_json_array_from_file "$_hosts_auto" "$_filter_file"
     printf ',"user":'
     routing_json_array_from_file "$_hosts_user"
     printf '},'
 
     printf '"subnets":{"auto":'
-    routing_json_array_from_file "$_subnets_auto"
+    routing_json_array_from_file "$_subnets_auto" "$_filter_file"
     printf ',"user":'
     routing_json_array_from_file "$_subnets_user"
     printf '}'
 
     printf '}'
+    
+    rm -f "$_filter_file" 2>/dev/null || true
 }
 
 # GET /routing/blocks/<routingType>  -> список блоков
@@ -456,25 +508,6 @@ route_routing_block_items_post() {
             cat "$TMP_NEWU" >"$USER_FILE" 2>/dev/null || true
         else
             : >"$USER_FILE" 2>/dev/null || true
-        fi
-
-        # Обновляем auto-файл: удаляем элементы, которые пользователь убрал
-        if [ -s "$TMP_SOL" ] && [ -f "$AUTO_FILE" ]; then
-            TMP_AUTO_NEW="/tmp/routing-auto-new-$$"
-            : >"$TMP_AUTO_NEW"
-            while IFS= read -r _auto_token; do
-                [ -z "$_auto_token" ] && continue
-                # Оставляем только те элементы, которые НЕ в списке удалённых
-                if ! grep -Fxq "$_auto_token" "$TMP_SOL" 2>/dev/null; then
-                    printf '%s\n' "$_auto_token" >>"$TMP_AUTO_NEW"
-                fi
-            done <"$TMP_A"
-            if [ -s "$TMP_AUTO_NEW" ]; then
-                cat "$TMP_AUTO_NEW" >"$AUTO_FILE" 2>/dev/null || true
-            else
-                : >"$AUTO_FILE" 2>/dev/null || true
-            fi
-            rm -f "$TMP_AUTO_NEW" 2>/dev/null || true
         fi
 
         # Обновляем solitary.txt из DeletedFromAuto
