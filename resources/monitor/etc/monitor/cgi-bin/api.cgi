@@ -459,16 +459,43 @@ route_routing_block_items_post() {
         fi
 
         # Обновляем solitary.txt из DeletedFromAuto
+        # Но только для элементов, которых нет в user-списках других блоков
         if [ -s "$TMP_SOL" ]; then
             SOLITARY_DIR="${ROUTING_LISTS_BASE}/del-usr"
             SOLITARY_FILE="${SOLITARY_DIR}/solitary.txt"
             mkdir -p "$SOLITARY_DIR" 2>/dev/null || true
-            if [ -f "$SOLITARY_FILE" ]; then
-                cat "$SOLITARY_FILE" "$TMP_SOL" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' 2>/dev/null | grep -v '^$' | sort -u >"${SOLITARY_FILE}.tmp" 2>/dev/null || true
-                mv "${SOLITARY_FILE}.tmp" "$SOLITARY_FILE" 2>/dev/null || rm -f "${SOLITARY_FILE}.tmp" 2>/dev/null || true
-            else
-                sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' "$TMP_SOL" 2>/dev/null | grep -v '^$' | sort -u >"$SOLITARY_FILE" 2>/dev/null || true
+            
+            # Собираем все user-элементы из всех блоков всех routing types
+            TMP_ALL_USER="/tmp/routing-all-user-$$"
+            : >"$TMP_ALL_USER"
+            for _rt_dir in "${ROUTING_LISTS_BASE}/nonbypass" "${ROUTING_LISTS_BASE}/zapret" "${ROUTING_LISTS_BASE}/bypass"; do
+                if [ -d "$_rt_dir" ]; then
+                    for _uf in "$_rt_dir"/*_user.txt; do
+                        [ -f "$_uf" ] && cat "$_uf" >>"$TMP_ALL_USER" 2>/dev/null || true
+                    done
+                fi
+            done
+            sort -u "$TMP_ALL_USER" -o "$TMP_ALL_USER" 2>/dev/null || true
+            
+            # Фильтруем: добавляем в solitary только элементы, которых нет в user-списках
+            TMP_SOL_FILTERED="/tmp/routing-sol-filtered-$$"
+            : >"$TMP_SOL_FILTERED"
+            while IFS= read -r _del_token; do
+                [ -z "$_del_token" ] && continue
+                if ! grep -Fxq "$_del_token" "$TMP_ALL_USER" 2>/dev/null; then
+                    printf '%s\n' "$_del_token" >>"$TMP_SOL_FILTERED"
+                fi
+            done <"$TMP_SOL"
+            
+            if [ -s "$TMP_SOL_FILTERED" ]; then
+                if [ -f "$SOLITARY_FILE" ]; then
+                    cat "$SOLITARY_FILE" "$TMP_SOL_FILTERED" | sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' 2>/dev/null | grep -v '^$' | sort -u >"${SOLITARY_FILE}.tmp" 2>/dev/null || true
+                    mv "${SOLITARY_FILE}.tmp" "$SOLITARY_FILE" 2>/dev/null || rm -f "${SOLITARY_FILE}.tmp" 2>/dev/null || true
+                else
+                    sed 's/#.*//;s/^[[:space:]]*//;s/[[:space:]]*$//' "$TMP_SOL_FILTERED" 2>/dev/null | grep -v '^$' | sort -u >"$SOLITARY_FILE" 2>/dev/null || true
+                fi
             fi
+            rm -f "$TMP_ALL_USER" "$TMP_SOL_FILTERED" 2>/dev/null || true
         fi
 
         rm -f "$TMP_A" "$TMP_U" "$TMP_F" "$TMP_SOL" "$TMP_NEWU" 2>/dev/null || true
@@ -491,10 +518,65 @@ route_routing_block_items_post() {
     printf '{"success":true}\n'
 }
 
-# POST /routing/blocks/<routingType> -> заглушка сохранения порядка/переноса блоков
+# POST /routing/blocks/<routingType> -> сохранение/перенос блоков между директориями
 route_routing_blocks_post() {
-    # На первом этапе просто принимаем тело и возвращаем success
-    # В будущем здесь можно реализовать физическое перемещение файлов между каталогами.
+    _pi="$PATH_INFO"
+    _sub="${_pi#routing/blocks/}"
+    _routing_type="${_sub%%/*}"
+    
+    _target_dir="$(get_routing_dir_for_type "$_routing_type")"
+    if [ -z "$_target_dir" ]; then
+        status_header 400
+        cgi_header
+        printf '{"success":false,"error":"Unknown routing type"}\n'
+        return 0
+    fi
+    
+    # Создаём целевую директорию если её нет
+    mkdir -p "$_target_dir" 2>/dev/null || true
+    
+    _body="$body"
+    
+    # Извлекаем список block id из JSON: {"blocks":[{"id":"block1",...},{"id":"block2",...}]}
+    # Простой парсинг: ищем все "id":"value"
+    _block_ids=""
+    _raw_ids="$(printf '%s\n' "$_body" | sed 's/},{/}\n{/g' | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+    
+    # Для каждого блока в списке проверяем, есть ли его файлы
+    for _bid in $_raw_ids; do
+        [ -z "$_bid" ] && continue
+        _block_ids="$_block_ids $_bid"
+        
+        # Проверяем, есть ли файлы блока в целевой директории
+        _has_files=0
+        for _suf in "_hosts_auto.txt" "_hosts_user.txt" "_subnets_auto.txt" "_subnets_user.txt"; do
+            [ -f "${_target_dir}/${_bid}${_suf}" ] && _has_files=1 && break
+        done
+        
+        # Если файлов нет — ищем в других директориях и перемещаем
+        if [ "$_has_files" -eq 0 ]; then
+            for _src_dir in "${ROUTING_LISTS_BASE}/nonbypass" "${ROUTING_LISTS_BASE}/zapret" "${ROUTING_LISTS_BASE}/bypass"; do
+                [ "$_src_dir" = "$_target_dir" ] && continue
+                [ ! -d "$_src_dir" ] && continue
+                
+                _found=0
+                for _suf in "_hosts_auto.txt" "_hosts_user.txt" "_subnets_auto.txt" "_subnets_user.txt"; do
+                    [ -f "${_src_dir}/${_bid}${_suf}" ] && _found=1 && break
+                done
+                
+                if [ "$_found" -eq 1 ]; then
+                    # Перемещаем все файлы блока
+                    for _suf in "_hosts_auto.txt" "_hosts_user.txt" "_subnets_auto.txt" "_subnets_user.txt"; do
+                        if [ -f "${_src_dir}/${_bid}${_suf}" ]; then
+                            mv "${_src_dir}/${_bid}${_suf}" "${_target_dir}/${_bid}${_suf}" 2>/dev/null || true
+                        fi
+                    done
+                    break
+                fi
+            done
+        fi
+    done
+    
     cgi_header
     printf '{"success":true}\n'
 }
