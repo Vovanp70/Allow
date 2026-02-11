@@ -1038,6 +1038,7 @@ a.menu-item {
     padding: 15px;
     border: 1px solid #e0e0e0;
     transition: all 0.2s;
+    overflow: visible;
 }
 
 .routing-block:hover {
@@ -1103,8 +1104,8 @@ a.menu-item {
     border-radius: 8px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.15);
     min-width: 200px;
-    z-index: 100;
-    overflow: hidden;
+    z-index: 9999;
+    overflow: visible;
     margin-top: 4px;
 }
 
