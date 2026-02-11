@@ -458,6 +458,25 @@ route_routing_block_items_post() {
             : >"$USER_FILE" 2>/dev/null || true
         fi
 
+        # Обновляем auto-файл: удаляем элементы, которые пользователь убрал
+        if [ -s "$TMP_SOL" ] && [ -f "$AUTO_FILE" ]; then
+            TMP_AUTO_NEW="/tmp/routing-auto-new-$$"
+            : >"$TMP_AUTO_NEW"
+            while IFS= read -r _auto_token; do
+                [ -z "$_auto_token" ] && continue
+                # Оставляем только те элементы, которые НЕ в списке удалённых
+                if ! grep -Fxq "$_auto_token" "$TMP_SOL" 2>/dev/null; then
+                    printf '%s\n' "$_auto_token" >>"$TMP_AUTO_NEW"
+                fi
+            done <"$TMP_A"
+            if [ -s "$TMP_AUTO_NEW" ]; then
+                cat "$TMP_AUTO_NEW" >"$AUTO_FILE" 2>/dev/null || true
+            else
+                : >"$AUTO_FILE" 2>/dev/null || true
+            fi
+            rm -f "$TMP_AUTO_NEW" 2>/dev/null || true
+        fi
+
         # Обновляем solitary.txt из DeletedFromAuto
         # Но только для элементов, которых нет в user-списках других блоков
         if [ -s "$TMP_SOL" ]; then
