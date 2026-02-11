@@ -312,7 +312,8 @@ route_routing_block_items_post() {
     # Вспомогательная функция: вытащить массив строк из JSON-поля
     get_array_field() {
         _field="$1"
-        printf '%s\n' "$_body" | sed -n "s/.*\"${_field}\"[[:space:]]*:[[:space:]]*\[\(.*\)\].*/\1/p" | sed 's/[[:space:]]//g'
+        # Используем [^]]* вместо .* для нежадного захвата до первой ]
+        printf '%s\n' "$_body" | sed -n "s/.*\"${_field}\"[[:space:]]*:[[:space:]]*\[\([^]]*\)\].*/\1/p" | sed 's/[[:space:]]//g'
     }
 
     # Базовый парсер массива JSON-строк вида ["a","b"]
