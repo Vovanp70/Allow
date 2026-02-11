@@ -590,33 +590,31 @@ document.addEventListener('keydown', function(e) {
 });
 
 // Удаление блока
-async function deleteBlock(routingType, blockId, blockName) {
-    // Подтверждение удаления
-    const confirmed = confirm(`Удалить блок "${blockName}"?\n\nВсе user-элементы будут удалены.\nAuto-элементы будут перемещены в solitary (не вернутся при sync).`);
+function deleteBlock(routingType, blockId, blockName) {
+    // Подтверждение удаления через модальное окно
+    const message = `Удалить блок "${blockName}"?\n\nВсе user-элементы будут удалены.\nAuto-элементы будут перемещены в solitary.`;
     
-    if (!confirmed) {
-        return;
-    }
-    
-    try {
-        const result = await apiRequest(`/routing/blocks/${routingType}/${blockId}`, 'DELETE');
-        
-        if (result.success) {
-            showToast(`Блок "${blockName}" удалён`, 2000);
+    openConfirmModal('Удаление блока', message, async () => {
+        try {
+            const result = await apiRequest(`/routing/blocks/${routingType}/${blockId}`, 'DELETE');
             
-            // Сбрасываем pending для этого routing type
-            pendingChanges[routingType] = null;
-            originalBlocks[routingType] = null;
-            
-            // Перезагружаем блоки
-            loadRoutingBlocks(routingType);
-        } else {
-            showToast('Ошибка: ' + (result.error || 'Не удалось удалить блок'), 3000);
+            if (result.success) {
+                showToast(`Блок "${blockName}" удалён`, 2000);
+                
+                // Сбрасываем pending для этого routing type
+                pendingChanges[routingType] = null;
+                originalBlocks[routingType] = null;
+                
+                // Перезагружаем блоки
+                loadRoutingBlocks(routingType);
+            } else {
+                showToast('Ошибка: ' + (result.error || 'Не удалось удалить блок'), 3000);
+            }
+        } catch (error) {
+            console.error('Error deleting block:', error);
+            showToast('Ошибка при удалении блока: ' + error.message, 3000);
         }
-    } catch (error) {
-        console.error('Error deleting block:', error);
-        showToast('Ошибка при удалении блока: ' + error.message, 3000);
-    }
+    }, 'Удалить');
 }
 
 // Глобальное меню перемещения блока
