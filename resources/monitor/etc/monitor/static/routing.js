@@ -119,13 +119,8 @@ function createBlockElement(block, routingType) {
     div.innerHTML = `
         <div class="block-header">
             ${!block.is_unnamed ? `
-                <div class="block-drag-handle" onclick="toggleMoveMenu(event, '${routingType}', '${block.id}')" title="Переместить блок">
+                <div class="block-drag-handle" onclick="showMoveMenu(event, '${routingType}', '${block.id}')" title="Переместить блок">
                     ⋮⋮
-                    <div class="block-move-menu" id="move-menu-${block.id}">
-                        <div class="block-move-menu-item" onclick="moveBlockTo(event, '${block.id}', '${routingType}', 'direct')">→ Напрямую</div>
-                        <div class="block-move-menu-item" onclick="moveBlockTo(event, '${block.id}', '${routingType}', 'bypass')">→ Встроенные инструменты</div>
-                        <div class="block-move-menu-item" onclick="moveBlockTo(event, '${block.id}', '${routingType}', 'vpn')">→ VPN</div>
-                    </div>
                 </div>
             ` : ''}
             <h3 class="block-title">${escapeHtml(block.name)}</h3>
@@ -624,28 +619,51 @@ async function deleteBlock(routingType, blockId, blockName) {
     }
 }
 
-// Показать/скрыть меню перемещения блока
-function toggleMoveMenu(event, routingType, blockId) {
-    event.stopPropagation();
-    
-    // Закрываем все открытые меню
-    document.querySelectorAll('.block-move-menu.show').forEach(menu => {
-        if (menu.id !== `move-menu-${blockId}`) {
-            menu.classList.remove('show');
-        }
-    });
-    
-    const menu = document.getElementById(`move-menu-${blockId}`);
-    if (menu) {
-        menu.classList.toggle('show');
+// Глобальное меню перемещения блока
+let activeMoveMenu = null;
+
+function closeMoveMenu() {
+    if (activeMoveMenu) {
+        activeMoveMenu.remove();
+        activeMoveMenu = null;
     }
 }
 
-// Закрыть все меню при клике вне
+// Показать меню перемещения блока
+function showMoveMenu(event, routingType, blockId) {
+    event.stopPropagation();
+    
+    // Закрываем предыдущее меню
+    closeMoveMenu();
+    
+    // Создаём меню
+    const menu = document.createElement('div');
+    menu.className = 'block-move-menu-fixed';
+    menu.innerHTML = `
+        <div class="block-move-menu-item" onclick="moveBlockTo(event, '${blockId}', '${routingType}', 'direct')">→ Напрямую</div>
+        <div class="block-move-menu-item" onclick="moveBlockTo(event, '${blockId}', '${routingType}', 'bypass')">→ Встроенные инструменты</div>
+        <div class="block-move-menu-item" onclick="moveBlockTo(event, '${blockId}', '${routingType}', 'vpn')">→ VPN</div>
+    `;
+    
+    // Позиционируем относительно кнопки
+    const rect = event.target.getBoundingClientRect();
+    menu.style.top = (rect.bottom + 4) + 'px';
+    menu.style.left = rect.left + 'px';
+    
+    document.body.appendChild(menu);
+    activeMoveMenu = menu;
+    
+    // Проверяем, не выходит ли меню за правый край экрана
+    const menuRect = menu.getBoundingClientRect();
+    if (menuRect.right > window.innerWidth) {
+        menu.style.left = (window.innerWidth - menuRect.width - 10) + 'px';
+    }
+}
+
+// Закрыть меню при клике вне
 document.addEventListener('click', function(e) {
-    if (!e.target.closest('.block-drag-handle')) {
-        document.querySelectorAll('.block-move-menu.show').forEach(menu => {
-            menu.classList.remove('show');
+    if (!e.target.closest('.block-drag-handle') && !e.target.closest('.block-move-menu-fixed')) {
+        closeMoveMenu();
         });
     }
 });
@@ -655,9 +673,7 @@ async function moveBlockTo(event, blockId, fromRoutingType, toRoutingType) {
     event.stopPropagation();
     
     // Закрываем меню
-    document.querySelectorAll('.block-move-menu.show').forEach(menu => {
-        menu.classList.remove('show');
-    });
+    closeMoveMenu();
     
     if (fromRoutingType === toRoutingType) {
         showToast('Блок уже в этой колонке', 2000);
