@@ -326,7 +326,7 @@ function handleDragEnd(e) {
 // Добавляем обработчики для колонок
 document.addEventListener('DOMContentLoaded', function() {
     // Проверяем, что мы на странице маршрутизации
-    if (document.querySelector('.routing-container')) {
+    if (document.querySelector('.routing-columns')) {
         // Загружаем блоки для всех колонок
         loadRoutingBlocks('direct');
         loadRoutingBlocks('bypass');
@@ -1084,7 +1084,7 @@ async function saveAllRoutingChanges() {
 // Загрузка всех блоков при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
     // Проверяем, что мы на странице маршрутизации
-    if (document.querySelector('.routing-container')) {
+    if (document.querySelector('.routing-columns')) {
         // Загружаем блоки для всех колонок
         loadRoutingBlocks('direct');
         loadRoutingBlocks('bypass');
