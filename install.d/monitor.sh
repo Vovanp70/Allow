@@ -77,7 +77,7 @@ ensure_deps() {
         "$OPKG_BIN" update >>"$LOG_FILE" 2>&1 || true
         "$OPKG_BIN" install lighttpd-mod-rewrite >>"$LOG_FILE" 2>&1 || true
     fi
-    # jq нужен для редактора конфигов (config.cgi)
+    # jq нужен для редактора конфигов (config.cgi) и разбора JSON авторизации (api.cgi)
     if ! command -v jq >/dev/null 2>&1 && ! "$OPKG_BIN" list-installed 2>/dev/null | grep -q "^jq "; then
         log "Устанавливаю jq для редактора конфигов..."
         "$OPKG_BIN" update >>"$LOG_FILE" 2>&1 || true

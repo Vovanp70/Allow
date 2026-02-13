@@ -173,11 +173,11 @@ get_session_from_cookie() {
     echo "$_c"
 }
 
-# --- Auth routes ---
+# --- Auth routes (jq для разбора JSON, ставится с монитором) ---
 route_auth_login() {
     _body="$1"
-    _login="$(printf '%s' "$_body" | sed -n 's/.*"login"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
-    _password="$(printf '%s' "$_body" | sed -n 's/.*"password"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+    _login="$(printf '%s' "$_body" | jq -r '.login // empty' 2>/dev/null)"
+    _password="$(printf '%s' "$_body" | jq -r '.password // empty' 2>/dev/null)"
     if [ -z "$_login" ] || [ -z "$_password" ]; then
         json_401
         return
@@ -210,8 +210,8 @@ route_auth_check() {
 }
 route_auth_change_password() {
     _body="$1"
-    _current="$(printf '%s' "$_body" | sed -n 's/.*"current_password"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
-    _new="$(printf '%s' "$_body" | sed -n 's/.*"new_password"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+    _current="$(printf '%s' "$_body" | jq -r '.current_password // empty' 2>/dev/null)"
+    _new="$(printf '%s' "$_body" | jq -r '.new_password // empty' 2>/dev/null)"
     if [ -z "$_new" ]; then
         status_header 400
         cgi_header
