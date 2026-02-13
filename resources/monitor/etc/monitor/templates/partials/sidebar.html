@@ -35,5 +35,11 @@
             </a>
         </div>
     </details>
+    <a href="{{ url_for('change_password_page') }}" class="menu-item {% if request.endpoint == 'change_password_page' %}active{% endif %}">
+        <span>Смена пароля</span>
+    </a>
+    <a href="/logout.html" class="menu-item menu-item-logout">
+        <span>Выход</span>
+    </a>
 </div>
 

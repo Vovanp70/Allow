@@ -7,7 +7,8 @@ const API_BASE = '/api';
 async function apiRequest(endpoint, method = 'GET', body = null) {
     const options = {
         method: method,
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin'
     };
     if (body) {
         options.body = JSON.stringify(body);
@@ -23,6 +24,14 @@ async function apiRequest(endpoint, method = 'GET', body = null) {
     const data = await response.json();
 
     if (!response.ok) {
+        if (response.status === 401) {
+            var isAuthEndpoint = (url.indexOf('/auth/login') !== -1) || (url.indexOf('/auth/logout') !== -1);
+            if (!isAuthEndpoint) {
+                var next = encodeURIComponent(location.pathname + location.search);
+                location.href = '/login.html?next=' + next;
+            }
+            throw new Error(data.error || 'Unauthorized');
+        }
         if (response.status === 404) {
             throw new Error(data.error || 'Not found');
         }

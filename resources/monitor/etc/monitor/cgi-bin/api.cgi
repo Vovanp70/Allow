@@ -77,6 +77,97 @@ json_500() {
     err="$(json_esc "$1")"
     printf '{"error":"%s"}\n' "$err"
 }
+json_401() {
+    status_header 401
+    cgi_header
+    printf '{"error":"Unauthorized"}\n'
+}
+
+AUTH_HELPER="${CONFIG_DIR}/auth_helper.py"
+PYTHON="${PYTHON:-python3}"
+
+# --- Extract session token from HTTP_COOKIE ---
+get_session_from_cookie() {
+    _c="${HTTP_COOKIE:-}"
+    _c="$(echo "$_c" | tr -d '\r\n')"
+    case "$_c" in
+        *session=*) ;;
+        *) echo ""; return ;;
+    esac
+    _c="${_c#*session=}"
+    _c="${_c%%;*}"
+    _c="${_c%% *}"
+    echo "$_c"
+}
+
+# --- Auth routes ---
+route_auth_login() {
+    _body="$1"
+    _login_pass="$(printf '%s' "$_body" | "$PYTHON" -c "
+import sys, json
+try:
+    d = json.loads(sys.stdin.read())
+    print(d.get('login', '') + '\t' + d.get('password', ''))
+except Exception:
+    pass
+" 2>/dev/null)"
+    _login="${_login_pass%%	*}"
+    _password="${_login_pass#*	}"
+    if [ -z "$_login" ] || [ -z "$_password" ]; then
+        json_401
+        return
+    fi
+    _token="$("$AUTH_HELPER" login "$_login" "$_password" 2>/dev/null)"
+    if [ -n "$_token" ]; then
+        status_header 200
+        printf 'Set-Cookie: session=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400\r\n' "$_token"
+        cgi_header
+        printf '{"success":true}\n'
+    else
+        json_401
+    fi
+}
+route_auth_logout() {
+    _tok="$(get_session_from_cookie)"
+    [ -n "$_tok" ] && "$AUTH_HELPER" destroy_session "$_tok" 2>/dev/null || true
+    status_header 200
+    printf 'Set-Cookie: session=; Path=/; Max-Age=0\r\n'
+    cgi_header
+    printf '{"success":true}\n'
+}
+route_auth_check() {
+    status_header 200
+    cgi_header
+    printf '{"ok":true}\n'
+}
+route_auth_change_password() {
+    _body="$1"
+    _pw_pair="$(printf '%s' "$_body" | "$PYTHON" -c "
+import sys, json
+try:
+    d = json.loads(sys.stdin.read())
+    print(d.get('current_password', '') + '\t' + d.get('new_password', ''))
+except Exception:
+    pass
+" 2>/dev/null)"
+    _current="${_pw_pair%%	*}"
+    _new="${_pw_pair#*	}"
+    if [ -z "$_new" ]; then
+        status_header 400
+        cgi_header
+        printf '{"success":false,"error":"Missing current or new password"}\n'
+        return
+    fi
+    if "$AUTH_HELPER" change_password "$_current" "$_new" 2>/dev/null; then
+        status_header 200
+        cgi_header
+        printf '{"success":true}\n'
+    else
+        status_header 400
+        cgi_header
+        printf '{"success":false,"error":"Invalid current password"}\n'
+    fi
+}
 
 # --- Routing helpers (lists -> blocks model) ---
 
@@ -2086,6 +2177,10 @@ main() {
     # #endregion
     # Normalize path: no leading/trailing slash for comparison
     case "$PATH_INFO" in
+        auth/login) path="/auth/login" ;;
+        auth/logout) path="/auth/logout" ;;
+        auth/change-password) path="/auth/change-password" ;;
+        auth/check) path="/auth/check" ;;
         system/info) path="/system/info" ;;
         dns-mode)    path="/dns-mode" ;;
         settings/children-filter) path="/settings/children-filter" ;;
@@ -2149,12 +2244,35 @@ main() {
     debug_log "dispatch path=$path"
     # #endregion
 
+    # Auth: require valid session unless POST /auth/login
+    if [ "$path" = "/auth/login" ] && [ "$REQUEST_METHOD" = "POST" ]; then
+        :
+    else
+        session="$(get_session_from_cookie)"
+        if [ -z "$session" ] || ! "$AUTH_HELPER" verify_session "$session" 2>/dev/null; then
+            json_401
+            return 0
+        fi
+    fi
+
     body=""
     if [ "$REQUEST_METHOD" = "POST" ]; then
         body="$(read_body)"
     fi
 
     case "$path" in
+        /auth/login)
+            [ "$REQUEST_METHOD" = "POST" ] && route_auth_login "$body" || json_404
+            ;;
+        /auth/logout)
+            [ "$REQUEST_METHOD" = "POST" ] && route_auth_logout || json_404
+            ;;
+        /auth/check)
+            [ "$REQUEST_METHOD" = "GET" ] && route_auth_check || json_404
+            ;;
+        /auth/change-password)
+            [ "$REQUEST_METHOD" = "POST" ] && route_auth_change_password "$body" || json_404
+            ;;
         /system/info)
             [ "$REQUEST_METHOD" = "GET" ] && route_system_info || json_404
             ;;

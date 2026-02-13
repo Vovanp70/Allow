@@ -1585,3 +1585,54 @@ a.menu-item {
 .singbox-proxy-hint {
     margin-top: 8px;
 }
+
+/* Login page (standalone, no sidebar) */
+.login-page {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+.login-page .login-card {
+    width: 100%;
+    max-width: 380px;
+    padding: 32px;
+}
+.login-page .login-logo {
+    margin-bottom: 24px;
+    text-align: center;
+}
+.login-page .login-title {
+    font-size: 1.5rem;
+    margin-bottom: 24px;
+    font-weight: 600;
+}
+.login-page .login-form .form-row {
+    margin-bottom: 16px;
+}
+.login-page .login-form .btn {
+    margin-top: 8px;
+    width: 100%;
+}
+.login-error {
+    color: #c00;
+    font-size: 0.9rem;
+    margin-top: 8px;
+    margin-bottom: 0;
+}
+.login-error:not([hidden]) {
+    display: block;
+}
+
+.change-password-page .change-password-form .card-content {
+    max-width: 480px;
+}
+.change-password-page .change-password-error:not([hidden]) {
+    display: block;
+    color: #c00;
+    margin-top: 8px;
+}
+.change-password-page .change-password-actions {
+    margin-top: 20px;
+}

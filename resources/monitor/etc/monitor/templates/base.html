@@ -34,7 +34,8 @@
         </div>
     </div>
 
-    <!-- Подключение общих JS -->
+    <!-- Подключение общих JS (auth-check первым: редирект на логин при 401) -->
+    <script src="{{ url_for('static', filename='auth-check.js') }}"></script>
     <script src="{{ url_for('static', filename='api-core.js') }}"></script>
     <script src="{{ url_for('static', filename='config-editor.js') }}"></script>
     <script src="{{ url_for('static', filename='logs-viewer.js') }}"></script>

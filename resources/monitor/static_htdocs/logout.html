@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Выход</title>
+</head>
+<body>
+<p>Выход из системы…</p>
+<script>
+fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' })
+  .then(function() { location.href = '/login.html'; })
+  .catch(function() { location.href = '/login.html'; });
+</script>
+</body>
+</html>

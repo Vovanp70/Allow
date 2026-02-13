@@ -48,6 +48,12 @@
             </a>
         </div>
     </details>
+    <a href="/change-password.html" class="menu-item ">
+        <span>Смена пароля</span>
+    </a>
+    <a href="/logout.html" class="menu-item menu-item-logout">
+        <span>Выход</span>
+    </a>
 </div>
 
 
@@ -215,7 +221,8 @@
         </div>
     </div>
 
-    <!-- Подключение общих JS -->
+    <!-- Подключение общих JS (auth-check первым: редирект на логин при 401) -->
+    <script src="/static/auth-check.js"></script>
     <script src="/static/api-core.js"></script>
     <script src="/static/config-editor.js"></script>
     <script src="/static/logs-viewer.js"></script>
