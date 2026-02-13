@@ -83,27 +83,38 @@ ensure_deps() {
         "$OPKG_BIN" update >>"$LOG_FILE" 2>&1 || true
         "$OPKG_BIN" install jq >>"$LOG_FILE" 2>&1 || true
     fi
+    # Python 3 нужен для авторизации (auth_helper.py)
+    if ! command -v python3 >/dev/null 2>&1 && ! command -v python >/dev/null 2>&1; then
+        if ! "$OPKG_BIN" list-installed 2>/dev/null | grep -qE "^python3? "; then
+            log "Устанавливаю python3 для авторизации монитора..."
+            "$OPKG_BIN" update >>"$LOG_FILE" 2>&1 || true
+            "$OPKG_BIN" install python3 >>"$LOG_FILE" 2>&1 || true
+        fi
+    fi
 }
 
 install_monitor() {
     log "=== УСТАНОВКА ${COMPONENT} ==="
     ensure_deps
 
-    log "Копирую приложение в ${APP_DIR} (shell CGI, без Python)..."
+    log "Копирую приложение в ${APP_DIR}..."
     rm -rf "$APP_DIR"
     mkdir -p "$APP_DIR" "$APP_DIR/cgi-bin"
     # lighttpd.conf и cgi-bin (api.cgi + config.cgi для редактора конфигов)
     [ -f "${NEED_DIR}/etc/monitor/lighttpd.conf" ] && cp -f "${NEED_DIR}/etc/monitor/lighttpd.conf" "$APP_DIR/"
     [ -f "${NEED_DIR}/etc/monitor/cgi-bin/api.cgi" ] && cp -f "${NEED_DIR}/etc/monitor/cgi-bin/api.cgi" "$APP_DIR/cgi-bin/"
     [ -f "${NEED_DIR}/etc/monitor/cgi-bin/config.cgi" ] && cp -f "${NEED_DIR}/etc/monitor/cgi-bin/config.cgi" "$APP_DIR/cgi-bin/"
+    [ -f "${NEED_DIR}/etc/monitor/auth_helper.py" ] && cp -f "${NEED_DIR}/etc/monitor/auth_helper.py" "$APP_DIR/"
     # Статика (HTML + static/) из static_htdocs
     if [ -d "${NEED_DIR}/static_htdocs" ]; then
         cp -R "${NEED_DIR}/static_htdocs/"* "$APP_DIR/"
     fi
     chmod +x "$APP_DIR/cgi-bin/api.cgi" 2>/dev/null || true
     chmod +x "$APP_DIR/cgi-bin/config.cgi" 2>/dev/null || true
+    chmod +x "$APP_DIR/auth_helper.py" 2>/dev/null || true
     [ -f "$APP_DIR/cgi-bin/api.cgi" ] && sed -i 's/\r$//' "$APP_DIR/cgi-bin/api.cgi" 2>/dev/null || true
     [ -f "$APP_DIR/cgi-bin/config.cgi" ] && sed -i 's/\r$//' "$APP_DIR/cgi-bin/config.cgi" 2>/dev/null || true
+    [ -f "$APP_DIR/auth_helper.py" ] && sed -i 's/\r$//' "$APP_DIR/auth_helper.py" 2>/dev/null || true
     # manage.d скрипты (system-info.sh, stubby.sh, dns-mode.sh) для api.cgi
     MANAGED_SRC="${NEED_DIR}/../allow/manage.d"
     if [ -d "$MANAGED_SRC" ]; then
