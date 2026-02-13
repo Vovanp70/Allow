@@ -245,6 +245,46 @@ async function editBlockItems(routingType, blockId, itemType) {
 
                 const newUserItems = Array.from(new Set([...keptUser, ...added]));
 
+                // Проверка дубликатов: элементы не должны быть в других блоках
+                const dupItems = await checkDuplicateItemsInOtherBlocks(routingType, blockId, itemType, F);
+                if (dupItems.length > 0) {
+                    const msg = dupItems.map(d =>
+                        `"${d.item}" уже есть в: ${d.otherBlocks.map(b => `${b.blockName} (${b.routingTypeName})`).join(', ')}`
+                    ).join('\n');
+                    const performSave = async () => {
+                        const payload = {
+                            item_type: itemType,
+                            items: F,
+                            deleted_from_auto: deletedFromAuto
+                        };
+                        await apiRequest(`/routing/blocks/${routingType}/${blockId}/items`, 'POST', payload);
+                        const blocks = pendingChanges[routingType].blocks;
+                        const blockIndex = blocks.findIndex(b => b.id === blockId);
+                        if (blockIndex !== -1) {
+                            const targetBlock = blocks[blockIndex];
+                            if (itemType === 'IPS') {
+                                if (!targetBlock.subnets) targetBlock.subnets = {};
+                                targetBlock.subnets.user = newUserItems;
+                            } else if (itemType === 'HOSTS') {
+                                if (!targetBlock.hosts) targetBlock.hosts = {};
+                                targetBlock.hosts.user = newUserItems;
+                            }
+                            pendingChanges[routingType].modified = true;
+                        }
+                        showToast('Элементы блока изменены (изменения сохранены)', 3000);
+                        delete window.currentRoutingEdit;
+                        closeConfigEditor();
+                        loadRoutingBlocks(routingType, true);
+                    };
+                    openConfirmModal(
+                        'Дубликаты',
+                        'Эти элементы уже есть в других блоках:\n\n' + msg + '\n\nДобавить всё равно?',
+                        () => { performSave().catch(err => { console.error(err); showToast('Ошибка: ' + err.message, 3000); }); },
+                        'Добавить'
+                    );
+                    return;
+                }
+
                 // Формируем payload для backend
                 const payload = {
                     item_type: itemType,
@@ -790,6 +830,68 @@ function updateSaveButton() {
     }
 }
 
+// Загрузить полные данные блока (hosts, subnets)
+async function fetchBlockFullData(routingType, blockId) {
+    const data = await apiRequest(`/routing/blocks/${routingType}/${blockId}`);
+    return (data.success && data.block) ? data.block : null;
+}
+
+// Проверить, есть ли элементы items в других блоках (не в currentBlockId)
+// Возвращает: [{ item, otherBlocks: [{ blockName, routingTypeName }] }, ...]
+async function checkDuplicateItemsInOtherBlocks(currentRoutingType, currentBlockId, itemType, items) {
+    const duplicates = [];
+    const routingTypes = ['direct', 'bypass', 'vpn'];
+    const routingTypeNames = { direct: 'Напрямую', bypass: 'Встроенные инструменты', vpn: 'VPN' };
+    
+    const itemsNormalized = new Map();
+    items.forEach(it => {
+        const n = it.trim().toLowerCase();
+        if (n && !itemsNormalized.has(n)) itemsNormalized.set(n, it.trim());
+    });
+    
+    for (const rt of routingTypes) {
+        let blocks = [];
+        const change = pendingChanges[rt];
+        if (change && change.blocks) {
+            blocks = change.blocks;
+        } else {
+            try {
+                const data = await apiRequest(`/routing/blocks/${rt}`);
+                if (data.success && data.blocks) blocks = data.blocks;
+            } catch (e) { continue; }
+        }
+        
+        for (const block of blocks) {
+            if (block.is_unnamed) continue;
+            if (rt === currentRoutingType && block.id === currentBlockId) continue;
+            
+            const full = (block.hosts && Array.isArray(block.hosts.auto)) ? block :
+                await fetchBlockFullData(rt, block.id);
+            if (!full) continue;
+            
+            const arr = itemType === 'HOSTS'
+                ? [...(full.hosts?.auto || []), ...(full.hosts?.user || [])]
+                : [...(full.subnets?.auto || []), ...(full.subnets?.user || [])];
+            const otherSet = new Set(arr.map(x => x.trim().toLowerCase()));
+            
+            for (const [norm, orig] of itemsNormalized) {
+                if (otherSet.has(norm)) {
+                    const existing = duplicates.find(d => d.normalizedItem === norm);
+                    const blockInfo = { blockName: block.name, routingTypeName: routingTypeNames[rt] || rt };
+                    if (existing) {
+                        if (!existing.otherBlocks.some(b => b.blockName === block.name && b.routingTypeName === blockInfo.routingTypeName)) {
+                            existing.otherBlocks.push(blockInfo);
+                        }
+                    } else {
+                        duplicates.push({ item: orig, normalizedItem: norm, otherBlocks: [blockInfo] });
+                    }
+                }
+            }
+        }
+    }
+    return duplicates;
+}
+
 // Валидация блоков на дубликаты
 async function validateRoutingBlocks() {
     const issues = {
@@ -836,6 +938,18 @@ async function validateRoutingBlocks() {
             });
         });
     }
+    
+    // Обогащаем блоки полными данными (hosts, subnets), если их нет
+    await Promise.all(allBlocks.map(async (block) => {
+        const hasFullData = block.hosts && Array.isArray(block.hosts.auto);
+        if (!hasFullData) {
+            const full = await fetchBlockFullData(block.routingType, block.id);
+            if (full) {
+                block.hosts = full.hosts || { auto: [], user: [] };
+                block.subnets = full.subnets || { auto: [], user: [] };
+            }
+        }
+    }));
     
     // Проверка дубликатов между блоками
     const itemToBlocks = {}; // item -> {originalItem: "...", blocks: Set/Map}
@@ -886,7 +1000,11 @@ async function validateRoutingBlocks() {
     
     // Проверка дубликатов внутри блоков
     allBlocks.forEach(block => {
-        const items = block.items || [];
+        const hostsAuto = (block.hosts && Array.isArray(block.hosts.auto)) ? block.hosts.auto : [];
+        const hostsUser = (block.hosts && Array.isArray(block.hosts.user)) ? block.hosts.user : [];
+        const subnetsAuto = (block.subnets && Array.isArray(block.subnets.auto)) ? block.subnets.auto : [];
+        const subnetsUser = (block.subnets && Array.isArray(block.subnets.user)) ? block.subnets.user : [];
+        const items = [...hostsAuto, ...hostsUser, ...subnetsAuto, ...subnetsUser];
         const seen = {};
         const duplicates = [];
         
