@@ -94,10 +94,10 @@ auth_hash() {
     printf '%s%s' "$_salt" "$_pass" | sha256sum 2>/dev/null | awk '{print $1}' | tr 'A-F' 'a-f'
 }
 
-# BusyBox od не поддерживает -A n; убираем адрес через awk
+# BusyBox od: без -A/-t, используем od -x и убираем адрес через awk
 auth_rand_hex() {
     _len="$1"
-    head -c "$_len" /dev/urandom 2>/dev/null | od -t x1 | awk '{$1=""; for(i=2;i<=NF;i++) printf $i}' | tr -d '\n'
+    head -c "$_len" /dev/urandom 2>/dev/null | od -x | awk '{$1=""; for(i=2;i<=NF;i++) printf $i}' | tr -d '\n'
 }
 
 auth_get_or_create_credentials() {
