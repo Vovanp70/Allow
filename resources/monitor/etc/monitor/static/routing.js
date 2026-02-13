@@ -938,82 +938,120 @@ async function validateRoutingBlocks() {
     return issues;
 }
 
+// Удалить элемент из hosts/subnets блока
+function removeItemFromBlock(block, normalizedItem) {
+    const filter = (arr) => (Array.isArray(arr) ? arr : []).filter(
+        i => i.trim().toLowerCase() !== normalizedItem
+    );
+    if (block.hosts) {
+        block.hosts.auto = filter(block.hosts.auto);
+        block.hosts.user = filter(block.hosts.user);
+    }
+    if (block.subnets) {
+        block.subnets.auto = filter(block.subnets.auto);
+        block.subnets.user = filter(block.subnets.user);
+    }
+}
+
+// Проверить, есть ли элемент в блоке
+function blockHasItem(block, normalizedItem) {
+    const check = (arr) => (Array.isArray(arr) ? arr : []).some(
+        i => i.trim().toLowerCase() === normalizedItem
+    );
+    return (block.hosts && (check(block.hosts.auto) || check(block.hosts.user))) ||
+           (block.subnets && (check(block.subnets.auto) || check(block.subnets.user)));
+}
+
+// Найти оригинальное значение (с регистром) в блоке
+function findOriginalInBlock(block, normalizedItem) {
+    const search = (arr) => (Array.isArray(arr) ? arr : []).find(
+        i => i.trim().toLowerCase() === normalizedItem
+    );
+    const found = (block.hosts && (search(block.hosts.auto) || search(block.hosts.user))) ||
+                  (block.subnets && (search(block.subnets.auto) || search(block.subnets.user)));
+    return found ? found.trim() : null;
+}
+
 // Исправить дубликат между блоками - оставить только в одном блоке
 function fixDuplicateBetweenBlocks(item, keepInBlock, removeFromBlocks) {
-    // Инициализируем pendingChanges для всех затронутых типов маршрутизации
+    const normalizedItem = item.trim().toLowerCase();
     const affectedTypes = new Set([keepInBlock.routingType]);
     removeFromBlocks.forEach(b => affectedTypes.add(b.routingType));
     
-    // Находим оригинальное значение item (с правильным регистром)
-    let originalItem = item;
-    const normalizedItem = item.toLowerCase();
-    
-    // Ищем оригинальное значение в любом из блоков
-    for (const routingType of affectedTypes) {
-        const change = pendingChanges[routingType];
-        const orig = originalBlocks[routingType];
-        const blocks = (change && change.blocks.length > 0) ? change.blocks : (orig || []);
-        
-        for (const block of blocks) {
-            if (block.items) {
-                const found = block.items.find(i => i.trim().toLowerCase() === normalizedItem);
-                if (found) {
-                    originalItem = found.trim();
-                    break;
-                }
-            }
-        }
-        if (originalItem !== item) break;
-    }
-    
+    // Инициализируем pendingChanges
     affectedTypes.forEach(routingType => {
         if (!pendingChanges[routingType]) {
-            // Загружаем с сервера или используем originalBlocks
-            if (originalBlocks[routingType]) {
-                pendingChanges[routingType] = {
-                    blocks: JSON.parse(JSON.stringify(originalBlocks[routingType])),
-                    modified: false
-                };
-            } else {
-                // Используем пустой массив, загрузка произойдет при следующей валидации
-                pendingChanges[routingType] = {
-                    blocks: [],
-                    modified: false
-                };
-            }
+            const orig = originalBlocks[routingType];
+            pendingChanges[routingType] = {
+                blocks: orig ? JSON.parse(JSON.stringify(orig)) : [],
+                modified: false
+            };
         }
     });
     
-    // Обновляем блок, в котором оставляем элемент
-    const keepRoutingType = keepInBlock.routingType;
-    const keepBlockIndex = pendingChanges[keepRoutingType].blocks.findIndex(
-        b => b.name === keepInBlock.blockName && !b.is_unnamed
-    );
-    
-    if (keepBlockIndex !== -1) {
-        const block = pendingChanges[keepRoutingType].blocks[keepBlockIndex];
-        // Убеждаемся, что элемент есть в блоке
-        const hasItem = block.items.some(i => i.trim().toLowerCase() === normalizedItem);
-        if (!hasItem) {
-            block.items.push(originalItem);
+    // Находим оригинальное значение
+    let originalItem = item.trim();
+    for (const routingType of affectedTypes) {
+        const blocks = pendingChanges[routingType].blocks;
+        for (const block of blocks) {
+            const found = findOriginalInBlock(block, normalizedItem);
+            if (found) {
+                originalItem = found;
+                break;
+            }
         }
-        pendingChanges[keepRoutingType].modified = true;
     }
     
-    // Удаляем элемент из других блоков
+    // Удаляем элемент из блоков, из которых убираем
     removeFromBlocks.forEach(blockInfo => {
-        const routingType = blockInfo.routingType;
-        const blockIndex = pendingChanges[routingType].blocks.findIndex(
-            b => b.name === blockInfo.blockName && !b.is_unnamed
-        );
-        
-        if (blockIndex !== -1) {
-            const block = pendingChanges[routingType].blocks[blockIndex];
-            block.items = block.items.filter(
-                i => i.trim().toLowerCase() !== normalizedItem
-            );
-            pendingChanges[routingType].modified = true;
+        const blocks = pendingChanges[blockInfo.routingType].blocks;
+        const block = blocks.find(b => b.name === blockInfo.blockName && !b.is_unnamed);
+        if (block) {
+            removeItemFromBlock(block, normalizedItem);
+            pendingChanges[blockInfo.routingType].modified = true;
         }
+    });
+    
+    // Убеждаемся, что элемент есть в блоке, где оставляем
+    const keepBlocks = pendingChanges[keepInBlock.routingType].blocks;
+    const keepBlock = keepBlocks.find(b => b.name === keepInBlock.blockName && !b.is_unnamed);
+    if (keepBlock && !blockHasItem(keepBlock, normalizedItem)) {
+        (keepBlock.hosts = keepBlock.hosts || {}).user = (keepBlock.hosts.user || []).concat(originalItem);
+        pendingChanges[keepInBlock.routingType].modified = true;
+    }
+}
+
+// Убрать дубликаты в массиве, оставив первое вхождение
+function dedupeArray(arr) {
+    const seen = {};
+    return (arr || []).filter(item => {
+        const n = item.trim().toLowerCase();
+        if (!n) return false;
+        if (seen[n]) return false;
+        seen[n] = true;
+        return true;
+    });
+}
+
+// Сохранить элементы блока на сервер
+async function persistBlockItemsToServer(routingType, blockId, block) {
+    const hostsAuto = (block.hosts && block.hosts.auto) || [];
+    const hostsUser = (block.hosts && block.hosts.user) || [];
+    const subnetsAuto = (block.subnets && block.subnets.auto) || [];
+    const subnetsUser = (block.subnets && block.subnets.user) || [];
+    
+    const hostsF = [...hostsAuto, ...hostsUser];
+    const subnetsF = [...subnetsAuto, ...subnetsUser];
+    
+    await apiRequest(`/routing/blocks/${routingType}/${blockId}/items`, 'POST', {
+        item_type: 'HOSTS',
+        items: hostsF,
+        deleted_from_auto: []
+    });
+    await apiRequest(`/routing/blocks/${routingType}/${blockId}/items`, 'POST', {
+        item_type: 'IPS',
+        items: subnetsF,
+        deleted_from_auto: []
     });
 }
 
@@ -1021,130 +1059,82 @@ function fixDuplicateBetweenBlocks(item, keepInBlock, removeFromBlocks) {
 function fixInternalDuplicates(blockInfo, duplicates) {
     const routingType = blockInfo.routingType;
     
-    // Инициализируем pendingChanges если нужно
     if (!pendingChanges[routingType]) {
-        const change = originalBlocks[routingType] || [];
+        const orig = originalBlocks[routingType] || [];
         pendingChanges[routingType] = {
-            blocks: JSON.parse(JSON.stringify(change)),
+            blocks: JSON.parse(JSON.stringify(orig)),
             modified: false
         };
-        if (!originalBlocks[routingType]) {
-            originalBlocks[routingType] = JSON.parse(JSON.stringify(change));
-        }
     }
     
-    // Находим блок
-    const blockIndex = pendingChanges[routingType].blocks.findIndex(
+    const block = pendingChanges[routingType].blocks.find(
         b => b.name === blockInfo.blockName && !b.is_unnamed
     );
+    if (!block) return;
     
-    if (blockIndex === -1) return;
+    block.hosts = block.hosts || { auto: [], user: [] };
+    block.subnets = block.subnets || { auto: [], user: [] };
     
-    const block = pendingChanges[routingType].blocks[blockIndex];
-    const normalizedDuplicates = duplicates.map(d => d.toLowerCase());
+    block.hosts.auto = dedupeArray(block.hosts.auto);
+    block.hosts.user = dedupeArray(block.hosts.user);
+    block.subnets.auto = dedupeArray(block.subnets.auto);
+    block.subnets.user = dedupeArray(block.subnets.user);
     
-    // Удаляем дубликаты, оставляя только первое вхождение
-    const seen = {};
-    const hostsAuto = (block.hosts && Array.isArray(block.hosts.auto)) ? block.hosts.auto : [];
-    const hostsUser = (block.hosts && Array.isArray(block.hosts.user)) ? block.hosts.user : [];
-    const subnetsAuto = (block.subnets && Array.isArray(block.subnets.auto)) ? block.subnets.auto : [];
-    const subnetsUser = (block.subnets && Array.isArray(block.subnets.user)) ? block.subnets.user : [];
-
-    const allItems = [...hostsAuto, ...hostsUser, ...subnetsAuto, ...subnetsUser];
-
-    const filtered = allItems.filter(item => {
-        const normalizedItem = item.trim().toLowerCase();
-        if (!normalizedItem) return false;
-        
-        if (normalizedDuplicates.includes(normalizedItem)) {
-            if (seen[normalizedItem]) {
-                return false; // Удаляем дубликат
-            }
-            seen[normalizedItem] = true;
-        }
-        return true;
-    });
-    
-    // Разносим обратно по hosts/subnets, предполагая что структура не менялась,
-    // а мы лишь удалили лишние повторы. Для простоты сохраняем только уникальные элементы
-    // в тех же массивах user, auto оставляем как есть.
-    block.hosts = block.hosts || {};
-    block.subnets = block.subnets || {};
-    block.hosts.auto = hostsAuto;
-    block.subnets.auto = subnetsAuto;
-    // Все оставшиеся элементы, которые были в hostsUser/subnetsUser, остаются там,
-    // так как мы удаляли только дубли по значению.
-    block.hosts.user = hostsUser.filter((item, index, self) => self.indexOf(item) === index);
-    block.subnets.user = subnetsUser.filter((item, index, self) => self.indexOf(item) === index);
-
     pendingChanges[routingType].modified = true;
 }
 
-// Показать диалоговое окно с проблемами валидации и решениями
+// Показать диалоговое окно с проблемами валидации
+// Пользователь выбирает действия (radio/checkbox), затем нажимает "Продолжить"
 function showValidationDialog(issues, onContinue, onCancel) {
     const hasIssues = issues.duplicates.length > 0 || issues.internalDuplicates.length > 0;
     
     if (!hasIssues) {
-        // Нет проблем, продолжаем
         onContinue();
         return;
     }
     
-    // Создаем уникальный ID для диалога
-    const dialogId = 'validation-dialog-' + Date.now();
-    
-    // Формируем сообщение с кнопками решений
     let message = '<div style="max-height: 500px; overflow-y: auto; text-align: left;">';
-    message += '<h3 style="margin-top: 0; color: #ff3b30;">Обнаружены проблемы валидации:</h3>';
+    message += '<p style="margin: 0 0 15px 0; color: #6e6e73;">Выберите действия, затем нажмите «Продолжить»:</p>';
     
-    // Дубликаты между блоками
+    // Дубликаты между блоками — radio
     if (issues.duplicates.length > 0) {
-        message += '<h4 style="color: #ff9500; margin-top: 15px;">Элементы в нескольких блоках:</h4>';
-        message += '<div style="margin: 10px 0;">';
+        message += '<h4 style="color: #ff9500; margin-top: 15px;">Элементы в нескольких блоках</h4>';
         
-        issues.duplicates.forEach((dup, index) => {
+        issues.duplicates.forEach((dup, dupIndex) => {
+            const radioName = 'dup-radio-' + dupIndex;
             message += `<div style="margin: 10px 0; padding: 10px; background: #f5f5f7; border-radius: 8px; border-left: 3px solid #ff9500;">`;
-            message += `<div style="margin-bottom: 8px;"><strong>${escapeHtml(dup.item)}</strong> находится в:</div>`;
-            message += `<div style="margin-left: 15px; margin-bottom: 10px;">`;
+            message += `<div style="margin-bottom: 8px;"><strong>${escapeHtml(dup.item)}</strong> — оставить только в:</div>`;
+            message += '<div style="margin-left: 10px;">';
             dup.blocks.forEach((block, blockIndex) => {
-                message += `<div style="margin: 5px 0;">• ${escapeHtml(block.blockName)} (${escapeHtml(block.routingTypeName)})</div>`;
+                const checked = blockIndex === 0 ? ' checked' : '';
+                message += `<label style="display: block; margin: 6px 0; cursor: pointer;">`;
+                message += `<input type="radio" name="${radioName}" value="${blockIndex}"${checked}> `;
+                message += escapeHtml(block.blockName) + ' (' + escapeHtml(block.routingTypeName) + ')';
+                message += `</label>`;
             });
-            message += `</div>`;
-            message += `<div style="margin-top: 10px;">Решение: оставить только в</div>`;
-            message += `<div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">`;
-            dup.blocks.forEach((block, blockIndex) => {
-                const btnId = `fix-dup-${index}-${blockIndex}`;
-                message += `<button id="${btnId}" class="btn btn-secondary btn-sm" style="font-size: 12px; padding: 6px 12px;">${escapeHtml(block.blockName)}</button>`;
-            });
-            message += `</div>`;
-            message += `</div>`;
+            message += '</div></div>';
         });
-        
-        message += '</div>';
     }
     
-    // Дубликаты внутри блоков
+    // Дубликаты внутри блоков — checkbox
     if (issues.internalDuplicates.length > 0) {
-        message += '<h4 style="color: #ff9500; margin-top: 20px;">Дубликаты внутри блоков:</h4>';
-        message += '<div style="margin: 10px 0;">';
+        message += '<h4 style="color: #ff9500; margin-top: 20px;">Дубликаты внутри блоков</h4>';
         
         issues.internalDuplicates.forEach((dup, index) => {
-            message += `<div style="margin: 10px 0; padding: 10px; background: #f5f5f7; border-radius: 8px; border-left: 3px solid #ff9500;">`;
-            message += `<div style="margin-bottom: 8px;"><strong>${escapeHtml(dup.blockName)}</strong> (${escapeHtml(dup.routingTypeName)})</div>`;
+            const cbId = 'fix-internal-' + index;
             const dupList = dup.duplicates.slice(0, 10).map(d => escapeHtml(d)).join(', ');
             const more = dup.duplicates.length > 10 ? ` и еще ${dup.duplicates.length - 10}` : '';
-            message += `<div style="margin: 5px 0; color: #6e6e73;">Дубликаты: ${dupList}${more}</div>`;
-            const btnId = `fix-internal-${index}`;
-            message += `<button id="${btnId}" class="btn btn-secondary btn-sm" style="margin-top: 8px; font-size: 12px; padding: 6px 12px;">Убрать дублирование</button>`;
-            message += `</div>`;
+            message += `<div style="margin: 10px 0; padding: 10px; background: #f5f5f7; border-radius: 8px; border-left: 3px solid #ff9500;">`;
+            message += `<label style="cursor: pointer; display: block;">`;
+            message += `<input type="checkbox" id="${cbId}" checked> `;
+            message += `<strong>${escapeHtml(dup.blockName)}</strong> (${escapeHtml(dup.routingTypeName)}): `;
+            message += `убрать дубликаты (${dupList}${more})`;
+            message += `</label></div>`;
         });
-        
-        message += '</div>';
     }
     
     message += '</div>';
     
-    // Используем confirm modal, но с кастомным сообщением
     const modal = document.getElementById('confirmModal');
     const titleEl = document.getElementById('confirmModalTitle');
     const messageEl = document.getElementById('confirmModalMessage');
@@ -1153,74 +1143,12 @@ function showValidationDialog(issues, onContinue, onCancel) {
     
     titleEl.textContent = 'Проблемы валидации';
     messageEl.innerHTML = message;
-    okBtn.textContent = 'Продолжить всё равно';
+    okBtn.textContent = 'Продолжить';
     
-    // Показываем кнопку отмены
     if (cancelBtn) {
         cancelBtn.style.display = 'inline-block';
     }
     
-    // Добавляем обработчики для кнопок исправления
-    setTimeout(() => {
-        // Обработчики для дубликатов между блоками
-        issues.duplicates.forEach((dup, index) => {
-            dup.blocks.forEach((block, blockIndex) => {
-                const btnId = `fix-dup-${index}-${blockIndex}`;
-                const btn = document.getElementById(btnId);
-                if (btn) {
-                    btn.addEventListener('click', () => {
-                        const keepInBlock = block;
-                        const removeFromBlocks = dup.blocks.filter((b, i) => i !== blockIndex);
-                        fixDuplicateBetweenBlocks(dup.item, keepInBlock, removeFromBlocks);
-                        showToast(`Элемент "${dup.item}" оставлен только в блоке "${block.blockName}"`);
-                        
-                        // Перезагружаем блоки
-                        loadRoutingBlocks(keepInBlock.routingType, true);
-                        removeFromBlocks.forEach(b => loadRoutingBlocks(b.routingType, true));
-                        
-                        // Перепроверяем валидацию
-                        setTimeout(async () => {
-                            const newIssues = await validateRoutingBlocks();
-                            if (newIssues.duplicates.length === 0 && newIssues.internalDuplicates.length === 0) {
-                                closeConfirmModal();
-                                onContinue();
-                            } else {
-                                showValidationDialog(newIssues, onContinue, onCancel);
-                            }
-                        }, 500);
-                    });
-                }
-            });
-        });
-        
-        // Обработчики для дубликатов внутри блоков
-        issues.internalDuplicates.forEach((dup, index) => {
-            const btnId = `fix-internal-${index}`;
-            const btn = document.getElementById(btnId);
-            if (btn) {
-                btn.addEventListener('click', () => {
-                    fixInternalDuplicates(dup, dup.duplicates);
-                    showToast(`Дубликаты удалены из блока "${dup.blockName}"`);
-                    
-                    // Перезагружаем блоки
-                    loadRoutingBlocks(dup.routingType, true);
-                    
-                    // Перепроверяем валидацию
-                    setTimeout(async () => {
-                        const newIssues = await validateRoutingBlocks();
-                        if (newIssues.duplicates.length === 0 && newIssues.internalDuplicates.length === 0) {
-                            closeConfirmModal();
-                            onContinue();
-                        } else {
-                            showValidationDialog(newIssues, onContinue, onCancel);
-                        }
-                    }, 500);
-                });
-            }
-        });
-    }, 100);
-    
-    // Удаляем inline обработчик и добавляем свой
     let cancelHandler = null;
     if (cancelBtn) {
         cancelBtn.removeAttribute('onclick');
@@ -1237,14 +1165,50 @@ function showValidationDialog(issues, onContinue, onCancel) {
         cancelBtn.addEventListener('click', cancelHandler);
     }
     
-    // Устанавливаем новый обработчик подтверждения
     confirmModalCallback = () => {
-        onContinue();
-        // Восстанавливаем оригинальный обработчик отмены
+        const modifiedBlocks = new Set();
+        
+        issues.duplicates.forEach((dup, dupIndex) => {
+            const radioName = 'dup-radio-' + dupIndex;
+            const selected = document.querySelector(`input[name="${radioName}"]:checked`);
+            if (selected) {
+                const blockIndex = parseInt(selected.value, 10);
+                const keepInBlock = dup.blocks[blockIndex];
+                const removeFromBlocks = dup.blocks.filter((_, i) => i !== blockIndex);
+                fixDuplicateBetweenBlocks(dup.item, keepInBlock, removeFromBlocks);
+                modifiedBlocks.add(`${keepInBlock.routingType}:${keepInBlock.blockId || keepInBlock.blockName}`);
+                removeFromBlocks.forEach(b => modifiedBlocks.add(`${b.routingType}:${b.blockId || b.blockName}`));
+            }
+        });
+        
+        issues.internalDuplicates.forEach((dup, index) => {
+            const cb = document.getElementById('fix-internal-' + index);
+            if (cb && cb.checked) {
+                fixInternalDuplicates(dup, dup.duplicates);
+                modifiedBlocks.add(`${dup.routingType}:${dup.blockName}`);
+            }
+        });
+        
         if (cancelBtn && cancelHandler) {
             cancelBtn.removeEventListener('click', cancelHandler);
             cancelBtn.setAttribute('onclick', 'closeConfirmModal()');
         }
+        closeConfirmModal();
+        
+        (async () => {
+            for (const key of modifiedBlocks) {
+                const [rt, bid] = key.split(':');
+                const blocks = (pendingChanges[rt] && pendingChanges[rt].blocks) || [];
+                const block = blocks.find(b => (b.id || b.name) === bid);
+                if (block) {
+                    await persistBlockItemsToServer(rt, block.id || block.name, block);
+                }
+            }
+            onContinue();
+        })().catch(err => {
+            console.error(err);
+            showToast('Ошибка при сохранении: ' + err.message, 3000);
+        });
     };
     
     modal.style.display = 'block';
