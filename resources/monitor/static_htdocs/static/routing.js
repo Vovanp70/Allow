@@ -1248,86 +1248,67 @@ async function saveAllRoutingChanges() {
     const saveBtn = document.getElementById('save-routing-changes-btn');
     if (saveBtn) {
         saveBtn.disabled = true;
-        saveBtn.textContent = 'Проверка...';
+        saveBtn.textContent = 'Сохранение...';
     }
     
     try {
-        // Валидация перед сохранением
-        showToast('Проверка на дубликаты...', 2000);
-        const validationIssues = await validateRoutingBlocks();
+        // --- Проверка на дубликаты отключена (закомментирована) ---
+        // showToast('Проверка на дубликаты...', 2000);
+        // const validationIssues = await validateRoutingBlocks();
+        // showValidationDialog(
+        //     validationIssues,
+        //     async () => {
+        //         if (saveBtn) { saveBtn.textContent = 'Сохранение...'; }
+        //         try { ... } catch (error) { ... }
+        //     },
+        //     () => { if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Сохранить изменения'; } }
+        // );
+
+        showToast('Сохранение изменений...', 2000);
         
-        // Показываем диалог с проблемами, если они есть
-        showValidationDialog(
-            validationIssues,
-            // onContinue - продолжить сохранение
-            async () => {
-                if (saveBtn) {
-                    saveBtn.textContent = 'Сохранение...';
-                }
-                
-                try {
-                    showToast('Сохранение изменений...', 2000);
-                    
-                    // Сохраняем все измененные колонки
-                    const savePromises = [];
-                    for (const [routingType, change] of Object.entries(pendingChanges)) {
-                        if (change !== null && change.modified) {
-                            savePromises.push(
-                                apiRequest(
-                                    `/routing/blocks/${routingType}`,
-                                    'POST',
-                                    { blocks: change.blocks }
-                                )
-                            );
-                        }
-                    }
-                    
-                    await Promise.all(savePromises);
-                    
+        // Сохраняем все измененные колонки
+        const savePromises = [];
+        for (const [routingType, change] of Object.entries(pendingChanges)) {
+            if (change !== null && change.modified) {
+                savePromises.push(
+                    apiRequest(
+                        `/routing/blocks/${routingType}`,
+                        'POST',
+                        { blocks: change.blocks }
+                    )
+                );
+            }
+        }
+        
+        await Promise.all(savePromises);
+        
         // Применяем изменения: очищаем IPSET и перезагружаем dnsmasq
         showToast('Применение изменений (очистка IPSET, перезагрузка dnsmasq)...', 3000);
-                    
-                    const applyResult = await apiRequest('/routing/apply', 'POST');
-                    
-                    if (applyResult.success) {
-                        showToast('Все изменения успешно применены');
-                        
-                        // Сбрасываем pendingChanges
-                        for (const routingType of Object.keys(pendingChanges)) {
-                            pendingChanges[routingType] = null;
-                            originalBlocks[routingType] = null;
-                        }
-                        
-                        // Перезагружаем все колонки с сервера
-                        await loadRoutingBlocks('direct');
-                        await loadRoutingBlocks('bypass');
-                        await loadRoutingBlocks('vpn');
-                        
-                        updateSaveButton();
-                    } else {
-                        throw new Error(applyResult.error || 'Ошибка при применении изменений');
-                    }
-                } catch (error) {
-                    console.error('Error saving changes:', error);
-                    showToast('Ошибка при сохранении: ' + error.message, 3000);
-                    if (saveBtn) {
-                        saveBtn.disabled = false;
-                        saveBtn.textContent = 'Сохранить изменения';
-                    }
-                }
-            },
-            // onCancel - отменить сохранение
-            () => {
-                if (saveBtn) {
-                    saveBtn.disabled = false;
-                    saveBtn.textContent = 'Сохранить изменения';
-                }
+        
+        const applyResult = await apiRequest('/routing/apply', 'POST');
+        
+        if (applyResult.success) {
+            showToast('Все изменения успешно применены');
+            
+            // Сбрасываем pendingChanges
+            for (const routingType of Object.keys(pendingChanges)) {
+                pendingChanges[routingType] = null;
+                originalBlocks[routingType] = null;
             }
-        );
+            
+            // Перезагружаем все колонки с сервера
+            await loadRoutingBlocks('direct');
+            await loadRoutingBlocks('bypass');
+            await loadRoutingBlocks('vpn');
+            
+            updateSaveButton();
+        } else {
+            throw new Error(applyResult.error || 'Ошибка при применении изменений');
+        }
         
     } catch (error) {
-        console.error('Error validating changes:', error);
-        showToast('Ошибка при проверке: ' + error.message, 3000);
+        console.error('Error saving changes:', error);
+        showToast('Ошибка при сохранении: ' + error.message, 3000);
         if (saveBtn) {
             saveBtn.disabled = false;
             saveBtn.textContent = 'Сохранить изменения';
