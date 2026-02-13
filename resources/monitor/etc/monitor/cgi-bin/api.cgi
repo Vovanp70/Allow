@@ -84,7 +84,13 @@ json_401() {
 }
 
 AUTH_HELPER="${CONFIG_DIR}/auth_helper.py"
-PYTHON="${PYTHON:-python3}"
+# На части роутеров может быть только python, без python3
+if command -v python3 >/dev/null 2>&1; then
+    PYTHON="python3"
+else
+    PYTHON="python"
+fi
+export CONFIG_DIR
 
 # --- Extract session token from HTTP_COOKIE ---
 get_session_from_cookie() {
@@ -106,10 +112,15 @@ route_auth_login() {
     _login_pass="$(printf '%s' "$_body" | "$PYTHON" -c "
 import sys, json
 try:
-    d = json.loads(sys.stdin.read())
-    print(d.get('login', '') + '\t' + d.get('password', ''))
+    raw = sys.stdin.read().strip()
+    if not raw:
+        sys.exit(1)
+    d = json.loads(raw)
+    login = (d.get('login') or '').strip()
+    password = d.get('password') or ''
+    print(login + '\t' + password)
 except Exception:
-    pass
+    sys.exit(1)
 " 2>/dev/null)"
     _login="${_login_pass%%	*}"
     _password="${_login_pass#*	}"

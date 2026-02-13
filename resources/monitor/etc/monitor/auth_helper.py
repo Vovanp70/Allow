@@ -14,13 +14,15 @@ import os
 import secrets
 import sys
 
-# Allow importing paths when run from cgi-bin or elsewhere
+# CONFIG_DIR: каталог с credentials/sessions, без зависимости от paths.py
 _SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-if _SCRIPT_DIR not in sys.path:
-    sys.path.insert(0, _SCRIPT_DIR)
-import paths
+if os.path.basename(_SCRIPT_DIR) == 'cgi-bin':
+    CONFIG_DIR = os.path.dirname(_SCRIPT_DIR)
+else:
+    CONFIG_DIR = _SCRIPT_DIR
+# Можно переопределить через переменную окружения (как в api.cgi)
+CONFIG_DIR = os.environ.get('CONFIG_DIR', CONFIG_DIR)
 
-CONFIG_DIR = paths.CONFIG_DIR
 CREDENTIALS_FILE = os.path.join(CONFIG_DIR, 'credentials')
 SESSIONS_FILE = os.path.join(CONFIG_DIR, 'sessions')
 DEFAULT_LOGIN = 'admin'

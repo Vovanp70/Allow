@@ -9,24 +9,25 @@
 </head>
 <body>
     <div class="login-page">
-        <div class="login-card card">
+        <div class="login-card">
             <div class="login-logo">
-                <h1 class="logo">
+                <h1 class="logo login-logo-text">
                     <span class="logo-all">All</span><span class="logo-allow">ow</span>
                 </h1>
+                <p class="login-subtitle">Панель монитора</p>
             </div>
-            <h2 class="login-title">Вход</h2>
+            <h2 class="login-title">Вход в систему</h2>
             <form id="login-form" class="login-form" method="post" action="/api/auth/login">
-                <div class="form-row">
+                <div class="login-field">
                     <label for="login-input">Логин</label>
-                    <input type="text" id="login-input" name="login" class="form-input" autocomplete="username" required autofocus>
+                    <input type="text" id="login-input" name="login" class="login-input" placeholder="admin" autocomplete="username" required autofocus>
                 </div>
-                <div class="form-row">
+                <div class="login-field">
                     <label for="password-input">Пароль</label>
-                    <input type="password" id="password-input" name="password" class="form-input" autocomplete="current-password" required>
+                    <input type="password" id="password-input" name="password" class="login-input" placeholder="••••••••" autocomplete="current-password" required>
                 </div>
                 <p id="login-error" class="login-error" role="alert" aria-live="polite" hidden></p>
-                <button type="submit" class="btn btn-primary" id="login-submit">Войти</button>
+                <button type="submit" class="login-submit" id="login-submit">Войти</button>
             </form>
         </div>
     </div>
