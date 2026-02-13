@@ -32,7 +32,7 @@ function openConfigEditor(title, filePath, apiEndpoint, saveEndpoint) {
 // Загрузить конфигурацию в редактор
 async function loadConfigEditor() {
     const textEl = document.getElementById('configEditorText');
-    
+    if (typeof showProgress === 'function') showProgress('Загрузка...');
     try {
         const data = await apiRequest(currentConfigEditor.apiEndpoint);
         
@@ -68,6 +68,8 @@ async function loadConfigEditor() {
             textEl.value = 'Ошибка при загрузке конфигурации: ' + error.message;
             showToast('Ошибка при загрузке: ' + error.message, 3000);
         }
+    } finally {
+        if (typeof hideProgress === 'function') hideProgress();
     }
 }
 
@@ -75,7 +77,7 @@ async function loadConfigEditor() {
 async function saveConfigEditor() {
     const textEl = document.getElementById('configEditorText');
     const configText = textEl.value;
-    
+    if (typeof showProgress === 'function') showProgress('Сохранение...');
     try {
         const data = await apiRequest(
             currentConfigEditor.saveEndpoint,
@@ -93,6 +95,8 @@ async function saveConfigEditor() {
         }
     } catch (error) {
         showToast('Ошибка при сохранении: ' + error.message, 3000);
+    } finally {
+        if (typeof hideProgress === 'function') hideProgress();
     }
 }
 

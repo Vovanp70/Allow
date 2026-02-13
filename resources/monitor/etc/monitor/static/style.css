@@ -899,72 +899,49 @@ a.menu-item {
     }
 }
 
-/* Круговой прогресс-бар */
+/* Минималистичный progress overlay: пустой круг + бегунок */
 .progress-overlay {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: rgba(0, 0, 0, 0.4);
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 2000;
-    backdrop-filter: blur(4px);
+    backdrop-filter: blur(3px);
 }
 
-.progress-overlay-content {
-    background: #ffffff;
-    border-radius: 20px;
-    padding: 40px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+.progress-overlay-spinner {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 20px;
+    justify-content: center;
 }
 
-.circular-progress {
-    position: relative;
-    width: 120px;
-    height: 120px;
-}
-
-.progress-ring {
+.progress-spinner-svg {
     transform: rotate(-90deg);
 }
 
-.progress-ring-circle {
-    transition: stroke-dashoffset 0.3s ease;
+.progress-spinner-track {
+    stroke: rgba(255, 255, 255, 0.25);
 }
 
-.progress-ring-progress {
-    transition: stroke-dashoffset 0.3s ease;
-    stroke-dasharray: 339.292;
-    stroke-dashoffset: 339.292;
+.progress-spinner-runner {
+    stroke: #007aff;
+    stroke-dasharray: 50 76;
+    animation: progressSpinnerSpin 0.9s linear infinite;
 }
 
-.progress-text {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    text-align: center;
+@keyframes progressSpinnerSpin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
-.progress-percent {
-    font-size: 24px;
-    font-weight: 600;
-    color: #1d1d1f;
-    line-height: 1.2;
-}
-
-.progress-message {
-    font-size: 14px;
-    color: #6e6e73;
-    margin-top: 4px;
-    line-height: 1.3;
+.progress-spinner-runner {
+    transform-origin: center;
 }
 
 /* ============================================================================

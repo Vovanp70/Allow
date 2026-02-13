@@ -197,6 +197,7 @@ async function loadSingboxProxyList() {
     const listEl = document.getElementById('singbox-proxy-list');
     if (!listEl) return;
     listEl.innerHTML = '<p style="color: #6e6e73; margin: 0;">Загрузка…</p>';
+    if (typeof showProgress === 'function') showProgress('Загрузка...');
     try {
         const data = await apiRequest(SINGBOX_CONFIG_GET);
         const config = parseConfigFromResponse(data);
@@ -225,6 +226,8 @@ async function loadSingboxProxyList() {
         listEl.innerHTML = '<p style="color: #c00;">Ошибка загрузки: ' + (err.message || 'сеть') + '</p>';
         singboxCurrentConfig = null;
         singboxProxyLinks = [];
+    } finally {
+        if (typeof hideProgress === 'function') hideProgress();
     }
 }
 
@@ -264,6 +267,7 @@ async function singboxSettingsAddFromLinks() {
     }
     if (btnEl) btnEl.disabled = true;
     if (msgEl) msgEl.textContent = 'Преобразование…';
+    if (typeof showProgress === 'function') showProgress('Преобразование...');
     try {
         const newOutbounds = await singboxConvertLinksToOutbounds(inputText);
         if (!newOutbounds.length) {
@@ -314,6 +318,7 @@ async function singboxSettingsAddFromLinks() {
         if (typeof console !== 'undefined') console.error('[singbox debug] add error', err);
     } finally {
         if (btnEl) btnEl.disabled = false;
+        if (typeof hideProgress === 'function') hideProgress();
     }
 }
 
@@ -329,12 +334,15 @@ async function saveSingboxDraft() {
     if (!singboxDirty || !singboxCurrentConfig) return { success: true };
     var configToSave = stripControlChars(singboxCurrentConfig.config);
     var configStr = stripControlCharsFromJsonString(JSON.stringify(configToSave, null, 2));
+    if (typeof showProgress === 'function') showProgress('Сохранение конфигурации...');
     try {
         const data = await apiRequest(SINGBOX_CONFIG_POST, 'POST', { config: configStr });
         if (data.success) singboxDirty = false;
         return data;
     } catch (err) {
         return { success: false, error: err.message };
+    } finally {
+        if (typeof hideProgress === 'function') hideProgress();
     }
 }
 

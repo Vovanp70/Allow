@@ -52,6 +52,7 @@ function bindCardClicks() {
 async function loadCurrentMode() {
     const statusEl = document.getElementById('dns-mode-status');
     if (statusEl) statusEl.textContent = 'Загрузка...';
+    if (typeof showProgress === 'function') showProgress('Загрузка...');
     try {
         const data = await apiRequest('/dns-mode/');
         const mode = data.mode || 'adblock';
@@ -69,6 +70,8 @@ async function loadCurrentMode() {
         setManualCardVisible(false);
         setSelectedCard('adblock');
         initialDnsMode = 'adblock';
+    } finally {
+        if (typeof hideProgress === 'function') hideProgress();
     }
     updateSaveButton();
 }
@@ -155,6 +158,7 @@ async function saveAllSettings() {
 async function loadChildrenFilterStatus() {
     const toggleEl = document.getElementById('children-filter-toggle');
     if (!toggleEl) return;
+    if (typeof showProgress === 'function') showProgress('Загрузка...');
     try {
         const data = await apiRequest('/settings/children-filter');
         const enabled = !!(data && data.enabled === true);
@@ -163,6 +167,8 @@ async function loadChildrenFilterStatus() {
         childrenFilterDirty = false;
     } catch (err) {
         if (typeof showToast === 'function') showToast('Ошибка загрузки настройки');
+    } finally {
+        if (typeof hideProgress === 'function') hideProgress();
     }
     updateSaveButton();
 }
@@ -212,6 +218,7 @@ async function onSyncAllowAutoupdateChange() {
 async function syncAllowRun() {
     const btnEl = document.getElementById('sync-allow-update-btn');
     if (btnEl) btnEl.disabled = true;
+    if (typeof showProgress === 'function') showProgress('Обновление списков...');
     try {
         await apiRequest('/sync-allow-lists/run', 'POST');
         if (typeof showToast === 'function') showToast('Обновление запущено');
@@ -220,6 +227,7 @@ async function syncAllowRun() {
         if (typeof showToast === 'function') showToast(err.message || 'Ошибка', 4000);
     } finally {
         if (btnEl) btnEl.disabled = false;
+        if (typeof hideProgress === 'function') hideProgress();
     }
 }
 

@@ -196,25 +196,15 @@
 
 
 
-    <!-- Переиспользуемый оверлей с круговым прогресс-баром -->
+    <!-- Минималистичный оверлей: пустой круг + бегунок по окружности -->
 <div id="progressOverlay" class="progress-overlay" style="display: none;">
-    <div class="progress-overlay-content">
-        <div class="circular-progress">
-            <svg class="progress-ring" width="120" height="120">
-                <circle class="progress-ring-circle" cx="60" cy="60" r="54" fill="transparent" stroke="#e0e0e0" stroke-width="8"/>
-                <circle class="progress-ring-progress" cx="60" cy="60" r="54" fill="transparent" stroke="#007aff" stroke-width="8" stroke-linecap="round"/>
-            </svg>
-            <div class="progress-text">
-                <div class="progress-percent">0%</div>
-                <div class="progress-message" id="progressMessage">Обработка...</div>
-            </div>
-        </div>
+    <div class="progress-overlay-spinner">
+        <svg class="progress-spinner-svg" width="48" height="48" viewBox="0 0 48 48">
+            <circle class="progress-spinner-track" cx="24" cy="24" r="20" fill="none" stroke-width="3"/>
+            <circle class="progress-spinner-runner" cx="24" cy="24" r="20" fill="none" stroke-width="3" stroke-linecap="round"/>
+        </svg>
     </div>
 </div>
-
-
-
-
 
     <!-- Всплывающее уведомление -->
     <div id="toast" class="toast">

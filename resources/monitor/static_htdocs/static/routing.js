@@ -34,6 +34,9 @@ async function loadRoutingBlocks(routingType, usePending = false) {
     
     container.innerHTML = '<div style="text-align: center; padding: 20px; color: #6e6e73;">Загрузка...</div>';
     
+    const needFetch = !(usePending && pendingChanges[routingType] !== null);
+    if (needFetch && typeof showProgress === 'function') showProgress('Загрузка...');
+    
     try {
         let blocks;
         
@@ -65,6 +68,8 @@ async function loadRoutingBlocks(routingType, usePending = false) {
     } catch (error) {
         console.error(`Error loading blocks for ${routingType}:`, error);
         container.innerHTML = '<div style="text-align: center; padding: 20px; color: #ff3b30;">Ошибка: ' + error.message + '</div>';
+    } finally {
+        if (needFetch && typeof hideProgress === 'function') hideProgress();
     }
 }
 
@@ -137,11 +142,13 @@ function createBlockElement(block, routingType) {
 
 // Редактирование элементов блока (только IPS или только HOSTS)
 async function editBlockItems(routingType, blockId, itemType) {
+    if (typeof showProgress === 'function') showProgress('Загрузка блока...');
     try {
         // Загружаем блок
         const blockData = await apiRequest(`/routing/blocks/${routingType}/${blockId}`);
         
         if (!blockData.success || !blockData.block) {
+            if (typeof hideProgress === 'function') hideProgress();
             showToast('Блок не найден', 3000);
             return;
         }
@@ -150,6 +157,7 @@ async function editBlockItems(routingType, blockId, itemType) {
         
         // UNNAMED блок нельзя редактировать
         if (block.is_unnamed) {
+            if (typeof hideProgress === 'function') hideProgress();
             showToast('Блок UNNAMED нельзя редактировать. Переместите элементы в обычный блок.', 3000);
             return;
         }
@@ -188,6 +196,7 @@ async function editBlockItems(routingType, blockId, itemType) {
             }
         };
         
+        if (typeof hideProgress === 'function') hideProgress();
         // Используем существующий редактор конфигурации
         openConfigEditor(
             title,
@@ -298,6 +307,7 @@ async function editBlockItems(routingType, blockId, itemType) {
         
     } catch (error) {
         console.error('Error loading block:', error);
+        if (typeof hideProgress === 'function') hideProgress();
         showToast('Ошибка при загрузке блока: ' + error.message, 3000);
     }
 }
@@ -364,6 +374,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     return;
                 }
                 
+                if (typeof showProgress === 'function') showProgress('Перемещение блока...');
                 try {
                     // Инициализируем pendingChanges если нужно
                     if (pendingChanges[draggedBlockData.routingType] === null) {
@@ -414,6 +425,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 } catch (error) {
                     console.error('Error moving block:', error);
                     showToast('Ошибка при перемещении блока: ' + error.message, 3000);
+                } finally {
+                    if (typeof hideProgress === 'function') hideProgress();
                 }
                 
                 draggedBlock = null;
@@ -519,6 +532,7 @@ async function submitAddBlock() {
     
     closeAddBlockModal();
     
+    if (typeof showProgress === 'function') showProgress('Добавление блока...');
     try {
         // Инициализируем pendingChanges если нужно
         if (pendingChanges[routingType] === null) {
@@ -554,6 +568,8 @@ async function submitAddBlock() {
     } catch (error) {
         console.error('Error adding block:', error);
         showToast('Ошибка при добавлении блока: ' + error.message, 3000);
+    } finally {
+        if (typeof hideProgress === 'function') hideProgress();
     }
 }
 
@@ -595,6 +611,7 @@ function deleteBlock(routingType, blockId, blockName) {
     const message = `Удалить блок "${blockName}"?\n\nВсе user-элементы будут удалены.\nAuto-элементы будут перемещены в solitary.`;
     
     openConfirmModal('Удаление блока', message, async () => {
+        if (typeof showProgress === 'function') showProgress('Удаление...');
         try {
             const result = await apiRequest(`/routing/blocks/${routingType}/${blockId}`, 'DELETE');
             
@@ -613,6 +630,8 @@ function deleteBlock(routingType, blockId, blockName) {
         } catch (error) {
             console.error('Error deleting block:', error);
             showToast('Ошибка при удалении блока: ' + error.message, 3000);
+        } finally {
+            if (typeof hideProgress === 'function') hideProgress();
         }
     }, 'Удалить');
 }
@@ -1250,6 +1269,7 @@ async function saveAllRoutingChanges() {
         saveBtn.disabled = true;
         saveBtn.textContent = 'Сохранение...';
     }
+    if (typeof showProgress === 'function') showProgress('Сохранение...');
     
     try {
         // --- Проверка на дубликаты отключена (закомментирована) ---
@@ -1313,6 +1333,8 @@ async function saveAllRoutingChanges() {
             saveBtn.disabled = false;
             saveBtn.textContent = 'Сохранить изменения';
         }
+    } finally {
+        if (typeof hideProgress === 'function') hideProgress();
     }
 }
 

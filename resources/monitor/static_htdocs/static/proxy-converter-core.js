@@ -1,5 +1,12 @@
 /* From https://github.com/4n0nymou3/proxy-to-singbox-converter (MIT). Integrated for Sing-box import. */
 const SUPPORTED_PROTOCOLS = ['vmess://', 'vless://', 'trojan://', 'hysteria2://', 'hy2://', 'ss://'];
+
+function startLoading() {
+    if (typeof showProgress === 'function') showProgress('Конвертация...');
+}
+function stopLoading() {
+    if (typeof hideProgress === 'function') hideProgress();
+}
 const CORS_PROXIES = [
     'https://api.allorigins.win/get?url=',
     'https://corsproxy.io/?',

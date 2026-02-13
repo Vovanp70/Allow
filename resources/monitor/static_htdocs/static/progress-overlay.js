@@ -1,28 +1,31 @@
-// Переиспользуемый компонент кругового прогресс-бара
+// Переиспользуемый компонент кругового прогресс-бара (минималистичный: круг + бегунок)
 
 let progressInterval = null;
 let currentProgress = 0;
 let progressTarget = 0;
+let progressRefCount = 0;
 
 // Показать прогресс-бар
 function showProgress(message = 'Обработка...') {
     const overlay = document.getElementById('progressOverlay');
     const messageEl = document.getElementById('progressMessage');
-    
-    if (overlay && messageEl) {
-        messageEl.textContent = message;
+    if (overlay) {
+        progressRefCount++;
+        if (messageEl) messageEl.textContent = message;
         overlay.style.display = 'flex';
         currentProgress = 0;
         progressTarget = 0;
-        updateProgress(0);
     }
 }
 
-// Скрыть прогресс-бар
+// Скрыть прогресс-бар (ref-count: несколько параллельных загрузок)
 function hideProgress() {
     const overlay = document.getElementById('progressOverlay');
     if (overlay) {
-        overlay.style.display = 'none';
+        progressRefCount = Math.max(0, progressRefCount - 1);
+        if (progressRefCount === 0) {
+            overlay.style.display = 'none';
+        }
         if (progressInterval) {
             clearInterval(progressInterval);
             progressInterval = null;
