@@ -443,14 +443,16 @@ async function loadDnsmasqLogs() {
 
 // Инициализация при загрузке страницы DNSMASQ
 document.addEventListener('DOMContentLoaded', async () => {
-    // Проверяем, что мы на странице DNSMASQ
     if (document.getElementById('dnsmasq-full-status')) {
-        await loadDnsmasqStatus();
-        await loadDnsmasqFullConfig();
-        await updateDnsmasqLogsSize();
-        
-        // Обновляем размер логов каждые 30 секунд
-        setInterval(updateDnsmasqLogsSize, 30000);
+        if (typeof showProgress === 'function') showProgress('Загрузка...');
+        try {
+            await loadDnsmasqStatus();
+            await loadDnsmasqFullConfig();
+            await updateDnsmasqLogsSize();
+            setInterval(updateDnsmasqLogsSize, 30000);
+        } finally {
+            if (typeof hideProgress === 'function') hideProgress();
+        }
     }
 });
 
@@ -711,10 +713,15 @@ async function clearDnsmasqFamilyLogs() {
 // Инициализация при загрузке страницы DNSMASQ Family
 document.addEventListener('DOMContentLoaded', async () => {
     if (document.getElementById('dnsmasq-family-cache-size')) {
-        await loadDnsmasqFamilyStatus();
-        await loadDnsmasqFamilyConfig();
-        await updateDnsmasqFamilyLogsSize();
-        setInterval(updateDnsmasqFamilyLogsSize, 30000);
+        if (typeof showProgress === 'function') showProgress('Загрузка...');
+        try {
+            await loadDnsmasqFamilyStatus();
+            await loadDnsmasqFamilyConfig();
+            await updateDnsmasqFamilyLogsSize();
+            setInterval(updateDnsmasqFamilyLogsSize, 30000);
+        } finally {
+            if (typeof hideProgress === 'function') hideProgress();
+        }
     }
 });
 

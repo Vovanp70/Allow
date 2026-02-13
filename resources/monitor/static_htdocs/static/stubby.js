@@ -444,19 +444,25 @@ function openStubbyFamilyConfigModal() {
 
 // ---------- Page init: load status and bind logging toggle ----------
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     const stubbyStatusEl = document.getElementById('stubby-status');
     const stubbyFamilyStatusEl = document.getElementById('stubby-family-status');
-
-    if (stubbyStatusEl) {
-        loadStubbyStatus();
-        updateStubbyLogsSize();
-        setInterval(updateStubbyLogsSize, 30000);
-    }
-
-    if (stubbyFamilyStatusEl) {
-        loadStubbyFamilyStatus();
-        updateStubbyFamilyLogsSize();
-        setInterval(updateStubbyFamilyLogsSize, 30000);
+    if (!stubbyStatusEl && !stubbyFamilyStatusEl) return;
+    if (typeof showProgress === 'function') showProgress('Загрузка...');
+    try {
+        const promises = [];
+        if (stubbyStatusEl) {
+            promises.push(loadStubbyStatus());
+            updateStubbyLogsSize();
+            setInterval(updateStubbyLogsSize, 30000);
+        }
+        if (stubbyFamilyStatusEl) {
+            promises.push(loadStubbyFamilyStatus());
+            updateStubbyFamilyLogsSize();
+            setInterval(updateStubbyFamilyLogsSize, 30000);
+        }
+        await Promise.allSettled(promises);
+    } finally {
+        if (typeof hideProgress === 'function') hideProgress();
     }
 });

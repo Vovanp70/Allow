@@ -353,16 +353,22 @@ window.routeByMarkEnable = routeByMarkEnable;
 window.routeByMarkDisable = routeByMarkDisable;
 
 // Вызов при загрузке страницы (дашборд или страница Sing-box)
-function initSingboxPage() {
-    loadSingboxStatus();
-    const clearBtn = document.getElementById('singbox-clear-logs-btn');
-    if (clearBtn) {
-        updateSingboxLogsSize();
-        setInterval(updateSingboxLogsSize, 30000);
-    }
-    const routeByMarkSelect = document.getElementById('singbox-route-by-mark-select');
-    if (routeByMarkSelect) {
-        loadRouteByIfaceList().then(function () { return loadRouteByIfaceStatus(); });
+async function initSingboxPage() {
+    if (typeof showProgress === 'function') showProgress('Загрузка...');
+    try {
+        const promises = [loadSingboxStatus()];
+        const clearBtn = document.getElementById('singbox-clear-logs-btn');
+        if (clearBtn) {
+            updateSingboxLogsSize();
+            setInterval(updateSingboxLogsSize, 30000);
+        }
+        const routeByMarkSelect = document.getElementById('singbox-route-by-mark-select');
+        if (routeByMarkSelect) {
+            promises.push(loadRouteByIfaceList().then(function () { return loadRouteByIfaceStatus(); }));
+        }
+        await Promise.allSettled(promises);
+    } finally {
+        if (typeof hideProgress === 'function') hideProgress();
     }
 }
 if (document.readyState === 'loading') {

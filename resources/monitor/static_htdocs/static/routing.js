@@ -1273,18 +1273,6 @@ async function saveAllRoutingChanges() {
     
     try {
         // --- Проверка на дубликаты отключена (закомментирована) ---
-        // showToast('Проверка на дубликаты...', 2000);
-        // const validationIssues = await validateRoutingBlocks();
-        // showValidationDialog(
-        //     validationIssues,
-        //     async () => {
-        //         if (saveBtn) { saveBtn.textContent = 'Сохранение...'; }
-        //         try { ... } catch (error) { ... }
-        //     },
-        //     () => { if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Сохранить изменения'; } }
-        // );
-
-        showToast('Сохранение изменений...', 2000);
         
         // Сохраняем все измененные колонки
         const savePromises = [];
@@ -1303,12 +1291,10 @@ async function saveAllRoutingChanges() {
         await Promise.all(savePromises);
         
         // Применяем изменения: очищаем IPSET и перезагружаем dnsmasq
-        showToast('Применение изменений (очистка IPSET, перезагрузка dnsmasq)...', 3000);
-        
         const applyResult = await apiRequest('/routing/apply', 'POST');
         
-        if (applyResult.success) {
-            showToast('Все изменения успешно применены');
+        if (applyResult.success && typeof showToast === 'function') {
+            showToast('Изменения применены');
             
             // Сбрасываем pendingChanges
             for (const routingType of Object.keys(pendingChanges)) {
@@ -1339,13 +1325,18 @@ async function saveAllRoutingChanges() {
 }
 
 // Загрузка всех блоков при загрузке страницы
-document.addEventListener('DOMContentLoaded', function() {
-    // Проверяем, что мы на странице маршрутизации
+document.addEventListener('DOMContentLoaded', async function() {
     if (document.querySelector('.routing-columns')) {
-        // Загружаем блоки для всех колонок
-        loadRoutingBlocks('direct');
-        loadRoutingBlocks('bypass');
-        loadRoutingBlocks('vpn');
+        if (typeof showProgress === 'function') showProgress('Загрузка...');
+        try {
+            await Promise.all([
+                loadRoutingBlocks('direct'),
+                loadRoutingBlocks('bypass'),
+                loadRoutingBlocks('vpn')
+            ]);
+        } finally {
+            if (typeof hideProgress === 'function') hideProgress();
+        }
     }
 });
 

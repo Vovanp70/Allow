@@ -113,15 +113,27 @@ setInterval(() => {
     if (typeof loadZapretStatus === 'function') loadZapretStatus();
 }, 30000);
 
-// Первоначальная загрузка
-document.addEventListener('DOMContentLoaded', () => {
-    if (typeof loadSystemInfo === 'function') loadSystemInfo();
-    if (typeof loadStubbyStatus === 'function') loadStubbyStatus();
-    if (typeof loadStubbyFamilyStatus === 'function') loadStubbyFamilyStatus();
-    if (typeof loadDnsmasqStatus === 'function') loadDnsmasqStatus();
-    if (typeof loadDnsmasqFamilyStatus === 'function') loadDnsmasqFamilyStatus();
-    if (typeof loadZapretStatus === 'function') loadZapretStatus();
-    if (typeof loadChildrenFilterVisibility === 'function') loadChildrenFilterVisibility();
+// Первоначальная загрузка (overlay до завершения — только дашборд; остальные страницы сами)
+document.addEventListener('DOMContentLoaded', async () => {
+    const loadFns = [];
+    if (typeof loadSystemInfo === 'function') loadFns.push(loadSystemInfo);
+    if (typeof loadStubbyStatus === 'function') loadFns.push(loadStubbyStatus);
+    if (typeof loadStubbyFamilyStatus === 'function') loadFns.push(loadStubbyFamilyStatus);
+    if (typeof loadDnsmasqStatus === 'function') loadFns.push(loadDnsmasqStatus);
+    if (typeof loadDnsmasqFamilyStatus === 'function') loadFns.push(loadDnsmasqFamilyStatus);
+    if (typeof loadZapretStatus === 'function') loadFns.push(loadZapretStatus);
+    if (typeof loadChildrenFilterVisibility === 'function') loadFns.push(loadChildrenFilterVisibility);
+    const isDashboard = !!document.getElementById('internet-status');
+    if (loadFns.length > 0 && isDashboard && typeof showProgress === 'function') {
+        showProgress('Загрузка...');
+        try {
+            await Promise.allSettled(loadFns.map(fn => fn()));
+        } finally {
+            if (typeof hideProgress === 'function') hideProgress();
+        }
+    } else if (loadFns.length > 0) {
+        loadFns.forEach(fn => fn());
+    }
 });
 
 
