@@ -87,22 +87,22 @@ CREDENTIALS_FILE="${CONFIG_DIR}/credentials"
 SESSIONS_FILE="${CONFIG_DIR}/sessions"
 export CONFIG_DIR
 
-# --- Auth: pure shell (openssl), no Python ---
+# --- Auth: pure shell (sha256sum + /dev/urandom), no openssl/Python ---
 auth_hash() {
     _salt="$1"
     _pass="$2"
-    _hex="$(printf '%s%s' "$_salt" "$_pass" | openssl dgst -sha256 2>/dev/null | sed -n 's/.*[[:space:]]\([0-9a-f]\{64\}\)$/\1/p')"
-    if [ -n "$_hex" ]; then
-        echo "$_hex"
-        return
-    fi
-    printf '%s%s' "$_salt" "$_pass" | openssl dgst -sha256 -binary 2>/dev/null | od -A n -t x1 | tr -d ' \n'
+    printf '%s%s' "$_salt" "$_pass" | sha256sum 2>/dev/null | awk '{print $1}' | tr 'A-F' 'a-f'
+}
+
+auth_rand_hex() {
+    _len="$1"
+    head -c "$_len" /dev/urandom 2>/dev/null | od -A n -t x1 | tr -d ' \n'
 }
 
 auth_get_or_create_credentials() {
     [ -f "$CREDENTIALS_FILE" ] && return 0
     mkdir -p "$CONFIG_DIR"
-    _salt="$(openssl rand -hex 8 2>/dev/null)"
+    _salt="$(auth_rand_hex 8)"
     [ -z "$_salt" ] && return 1
     _hash="$(auth_hash "$_salt" "admin")"
     [ -z "$_hash" ] && return 1
@@ -119,14 +119,14 @@ auth_verify() {
     _rest="${_line#*:}"
     _salt="${_rest%%:*}"
     _stored="${_rest#*:}"
-    _stored="${_stored%%:*}"
+    _stored="$(echo "$_stored" | tr -d '\r\n' | tr 'A-F' 'a-f')"
     [ "$_user" != "$_login" ] && return 1
     _computed="$(auth_hash "$_salt" "$_pass")"
     [ "$_computed" = "$_stored" ]
 }
 
 auth_create_session() {
-    _token="$(openssl rand -hex 32 2>/dev/null)"
+    _token="$(auth_rand_hex 32)"
     [ -z "$_token" ] && return 1
     mkdir -p "$CONFIG_DIR"
     echo "$_token" >> "$SESSIONS_FILE"
@@ -151,7 +151,7 @@ auth_change_password() {
     _new="$2"
     auth_verify "admin" "$_current" || return 1
     auth_get_or_create_credentials || return 1
-    _salt="$(openssl rand -hex 8 2>/dev/null)"
+    _salt="$(auth_rand_hex 8)"
     [ -z "$_salt" ] && return 1
     _hash="$(auth_hash "$_salt" "$_new")"
     [ -z "$_hash" ] && return 1
