@@ -12,9 +12,16 @@
         </div>
     </header>
 
+    <!-- Мобильные табы: переключение колонок (видно только на узких экранах) -->
+    <div class="routing-mobile-tabs" role="tablist" aria-label="Тип маршрутизации">
+        <button type="button" class="routing-mobile-tab active" role="tab" aria-selected="true" data-column="direct">Напрямую</button>
+        <button type="button" class="routing-mobile-tab" role="tab" aria-selected="false" data-column="bypass">Обход</button>
+        <button type="button" class="routing-mobile-tab" role="tab" aria-selected="false" data-column="vpn">VPN</button>
+    </div>
+
     <div class="routing-columns">
         <!-- Колонка 1: Напрямую -->
-        <div class="routing-column" id="direct-column">
+        <div class="routing-column mobile-active" id="direct-column" data-column="direct">
             <div class="column-header">
                 <h2>Напрямую</h2>
                 <button class="btn btn-primary btn-sm" onclick="addBlock('direct')">+ Добавить блок</button>
@@ -25,7 +32,7 @@
         </div>
 
         <!-- Колонка 2: Встроенные инструменты обхода -->
-        <div class="routing-column" id="bypass-column">
+        <div class="routing-column" id="bypass-column" data-column="bypass">
             <div class="column-header">
                 <h2>Встроенные инструменты обхода</h2>
                 <button class="btn btn-primary btn-sm" onclick="addBlock('bypass')">+ Добавить блок</button>
@@ -36,7 +43,7 @@
         </div>
 
         <!-- Колонка 3: VPN -->
-        <div class="routing-column" id="vpn-column">
+        <div class="routing-column" id="vpn-column" data-column="vpn">
             <div class="column-header">
                 <h2>VPN</h2>
                 <button class="btn btn-primary btn-sm" onclick="addBlock('vpn')">+ Добавить блок</button>

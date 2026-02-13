@@ -1324,19 +1324,41 @@ async function saveAllRoutingChanges() {
     }
 }
 
-// Загрузка всех блоков при загрузке страницы
+// Загрузка всех блоков при загрузке страницы + инициализация мобильных табов
 document.addEventListener('DOMContentLoaded', async function() {
-    if (document.querySelector('.routing-columns')) {
-        if (typeof showProgress === 'function') showProgress('Загрузка...');
-        try {
-            await Promise.all([
-                loadRoutingBlocks('direct'),
-                loadRoutingBlocks('bypass'),
-                loadRoutingBlocks('vpn')
-            ]);
-        } finally {
-            if (typeof hideProgress === 'function') hideProgress();
-        }
+    const columnsEl = document.querySelector('.routing-columns');
+    if (!columnsEl) return;
+
+    if (typeof showProgress === 'function') showProgress('Загрузка...');
+    try {
+        await Promise.all([
+            loadRoutingBlocks('direct'),
+            loadRoutingBlocks('bypass'),
+            loadRoutingBlocks('vpn')
+        ]);
+    } finally {
+        if (typeof hideProgress === 'function') hideProgress();
+    }
+
+    // Мобильные табы: переключение колонок на узких экранах
+    const tabsBar = document.querySelector('.routing-mobile-tabs');
+    if (tabsBar) {
+        const tabs = tabsBar.querySelectorAll('.routing-mobile-tab');
+        const columns = document.querySelectorAll('.routing-column[data-column]');
+        tabs.forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                const col = btn.getAttribute('data-column');
+                columns.forEach(function(c) {
+                    const active = c.getAttribute('data-column') === col;
+                    c.classList.toggle('mobile-active', active);
+                });
+                tabs.forEach(function(b) {
+                    const isActive = b.getAttribute('data-column') === col;
+                    b.classList.toggle('active', isActive);
+                    b.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                });
+            });
+        });
     }
 });
 
