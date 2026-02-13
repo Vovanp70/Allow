@@ -1177,6 +1177,11 @@ a.menu-item {
     
     .routing-column {
         width: 100%;
+        flex: 1 1 0;
+        min-height: 0;
+    }
+    .routing-page .routing-column {
+        min-height: 200px;
     }
 }
 
@@ -1324,6 +1329,17 @@ a.menu-item {
 .settings-page {
     padding: 20px;
     max-width: 100%;
+}
+
+/* Страница маршрутизации: привязка к высоте экрана, скролл внутри колонок */
+.settings-page.routing-page {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 80px);
+    min-height: 0;
+}
+.routing-page .settings-page-header {
+    flex-shrink: 0;
 }
 
 .settings-page-header {
