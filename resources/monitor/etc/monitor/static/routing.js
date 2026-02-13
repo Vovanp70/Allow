@@ -1166,29 +1166,6 @@ function showValidationDialog(issues, onContinue, onCancel) {
     }
     
     confirmModalCallback = () => {
-        const modifiedBlocks = new Set();
-        
-        issues.duplicates.forEach((dup, dupIndex) => {
-            const radioName = 'dup-radio-' + dupIndex;
-            const selected = document.querySelector(`input[name="${radioName}"]:checked`);
-            if (selected) {
-                const blockIndex = parseInt(selected.value, 10);
-                const keepInBlock = dup.blocks[blockIndex];
-                const removeFromBlocks = dup.blocks.filter((_, i) => i !== blockIndex);
-                fixDuplicateBetweenBlocks(dup.item, keepInBlock, removeFromBlocks);
-                modifiedBlocks.add(`${keepInBlock.routingType}:${keepInBlock.blockId || keepInBlock.blockName}`);
-                removeFromBlocks.forEach(b => modifiedBlocks.add(`${b.routingType}:${b.blockId || b.blockName}`));
-            }
-        });
-        
-        issues.internalDuplicates.forEach((dup, index) => {
-            const cb = document.getElementById('fix-internal-' + index);
-            if (cb && cb.checked) {
-                fixInternalDuplicates(dup, dup.duplicates);
-                modifiedBlocks.add(`${dup.routingType}:${dup.blockName}`);
-            }
-        });
-        
         if (cancelBtn && cancelHandler) {
             cancelBtn.removeEventListener('click', cancelHandler);
             cancelBtn.setAttribute('onclick', 'closeConfirmModal()');
@@ -1196,11 +1173,63 @@ function showValidationDialog(issues, onContinue, onCancel) {
         closeConfirmModal();
         
         (async () => {
-            for (const key of modifiedBlocks) {
-                const [rt, bid] = key.split(':');
+            const toEnrich = new Map();
+            issues.duplicates.forEach(dup => {
+                dup.blocks.forEach(b => toEnrich.set(`${b.routingType}\0${b.blockId || b.blockName}`, { rt: b.routingType, bid: b.blockId || b.blockName }));
+            });
+            issues.internalDuplicates.forEach((dup, idx) => {
+                if (document.getElementById('fix-internal-' + idx)?.checked) {
+                    toEnrich.set(`${dup.routingType}\0${dup.blockName}`, { rt: dup.routingType, bid: dup.blockName });
+                }
+            });
+            
+            for (const { rt, bid } of toEnrich.values()) {
+                if (!pendingChanges[rt]) {
+                    const data = await apiRequest(`/routing/blocks/${rt}`);
+                    if (data.success && data.blocks) {
+                        pendingChanges[rt] = { blocks: JSON.parse(JSON.stringify(data.blocks)), modified: false };
+                        if (!originalBlocks[rt]) originalBlocks[rt] = JSON.parse(JSON.stringify(data.blocks));
+                    }
+                }
+                const blocks = pendingChanges[rt]?.blocks || [];
+                const block = blocks.find(b => (b.id || b.name) === bid);
+                if (block && !(block.hosts && Array.isArray(block.hosts.auto))) {
+                    const full = await fetchBlockFullData(rt, bid);
+                    if (full) {
+                        block.hosts = full.hosts || { auto: [], user: [] };
+                        block.subnets = full.subnets || { auto: [], user: [] };
+                    }
+                }
+            }
+
+            
+            // Применяем исправления
+            const toPersist = new Map();
+            issues.duplicates.forEach((dup, dupIndex) => {
+                const radioName = 'dup-radio-' + dupIndex;
+                const selected = document.querySelector(`input[name="${radioName}"]:checked`);
+                if (selected) {
+                    const blockIndex = parseInt(selected.value, 10);
+                    const keepInBlock = dup.blocks[blockIndex];
+                    const removeFromBlocks = dup.blocks.filter((_, i) => i !== blockIndex);
+                    fixDuplicateBetweenBlocks(dup.item, keepInBlock, removeFromBlocks);
+                    toPersist.set(keepInBlock.routingType + '\0' + (keepInBlock.blockId || keepInBlock.blockName), { rt: keepInBlock.routingType, bid: keepInBlock.blockId || keepInBlock.blockName });
+                    removeFromBlocks.forEach(b => toPersist.set(b.routingType + '\0' + (b.blockId || b.blockName), { rt: b.routingType, bid: b.blockId || b.blockName }));
+                }
+            });
+            
+            issues.internalDuplicates.forEach((dup, index) => {
+                const cb = document.getElementById('fix-internal-' + index);
+                if (cb && cb.checked) {
+                    fixInternalDuplicates(dup, dup.duplicates);
+                    toPersist.set(dup.routingType + '\0' + dup.blockName, { rt: dup.routingType, bid: dup.blockName });
+                }
+            });
+            
+            for (const { rt, bid } of toPersist.values()) {
                 const blocks = (pendingChanges[rt] && pendingChanges[rt].blocks) || [];
                 const block = blocks.find(b => (b.id || b.name) === bid);
-                if (block) {
+                if (block && block.hosts && Array.isArray(block.hosts.auto)) {
                     await persistBlockItemsToServer(rt, block.id || block.name, block);
                 }
             }
