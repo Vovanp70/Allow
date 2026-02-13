@@ -83,14 +83,81 @@ json_401() {
     printf '{"error":"Unauthorized"}\n'
 }
 
-AUTH_HELPER="${CONFIG_DIR}/auth_helper.py"
-# На части роутеров может быть только python, без python3
-if command -v python3 >/dev/null 2>&1; then
-    PYTHON="python3"
-else
-    PYTHON="python"
-fi
+CREDENTIALS_FILE="${CONFIG_DIR}/credentials"
+SESSIONS_FILE="${CONFIG_DIR}/sessions"
 export CONFIG_DIR
+
+# --- Auth: pure shell (openssl), no Python ---
+auth_hash() {
+    _salt="$1"
+    _pass="$2"
+    _hex="$(printf '%s%s' "$_salt" "$_pass" | openssl dgst -sha256 2>/dev/null | sed -n 's/.*[[:space:]]\([0-9a-f]\{64\}\)$/\1/p')"
+    if [ -n "$_hex" ]; then
+        echo "$_hex"
+        return
+    fi
+    printf '%s%s' "$_salt" "$_pass" | openssl dgst -sha256 -binary 2>/dev/null | od -A n -t x1 | tr -d ' \n'
+}
+
+auth_get_or_create_credentials() {
+    [ -f "$CREDENTIALS_FILE" ] && return 0
+    mkdir -p "$CONFIG_DIR"
+    _salt="$(openssl rand -hex 8 2>/dev/null)"
+    [ -z "$_salt" ] && return 1
+    _hash="$(auth_hash "$_salt" "admin")"
+    [ -z "$_hash" ] && return 1
+    echo "admin:${_salt}:${_hash}" > "$CREDENTIALS_FILE"
+}
+
+auth_verify() {
+    _login="$1"
+    _pass="$2"
+    auth_get_or_create_credentials || return 1
+    [ ! -f "$CREDENTIALS_FILE" ] && return 1
+    IFS= read -r _line < "$CREDENTIALS_FILE"
+    _user="${_line%%:*}"
+    _rest="${_line#*:}"
+    _salt="${_rest%%:*}"
+    _stored="${_rest#*:}"
+    _stored="${_stored%%:*}"
+    [ "$_user" != "$_login" ] && return 1
+    _computed="$(auth_hash "$_salt" "$_pass")"
+    [ "$_computed" = "$_stored" ]
+}
+
+auth_create_session() {
+    _token="$(openssl rand -hex 32 2>/dev/null)"
+    [ -z "$_token" ] && return 1
+    mkdir -p "$CONFIG_DIR"
+    echo "$_token" >> "$SESSIONS_FILE"
+    echo "$_token"
+}
+
+auth_verify_session() {
+    _tok="$1"
+    [ -z "$_tok" ] && return 1
+    [ -f "$SESSIONS_FILE" ] || return 1
+    grep -q -F "$_tok" "$SESSIONS_FILE" 2>/dev/null
+}
+
+auth_destroy_session() {
+    _tok="$1"
+    [ -z "$_tok" ] || [ ! -f "$SESSIONS_FILE" ] && return 0
+    grep -v -F "$_tok" "$SESSIONS_FILE" > "${SESSIONS_FILE}.tmp" 2>/dev/null && mv "${SESSIONS_FILE}.tmp" "$SESSIONS_FILE"
+}
+
+auth_change_password() {
+    _current="$1"
+    _new="$2"
+    auth_verify "admin" "$_current" || return 1
+    auth_get_or_create_credentials || return 1
+    _salt="$(openssl rand -hex 8 2>/dev/null)"
+    [ -z "$_salt" ] && return 1
+    _hash="$(auth_hash "$_salt" "$_new")"
+    [ -z "$_hash" ] && return 1
+    echo "admin:${_salt}:${_hash}" > "$CREDENTIALS_FILE"
+    return 0
+}
 
 # --- Extract session token from HTTP_COOKIE ---
 get_session_from_cookie() {
@@ -109,26 +176,16 @@ get_session_from_cookie() {
 # --- Auth routes ---
 route_auth_login() {
     _body="$1"
-    _login_pass="$(printf '%s' "$_body" | "$PYTHON" -c "
-import sys, json
-try:
-    raw = sys.stdin.read().strip()
-    if not raw:
-        sys.exit(1)
-    d = json.loads(raw)
-    login = (d.get('login') or '').strip()
-    password = d.get('password') or ''
-    print(login + '\t' + password)
-except Exception:
-    sys.exit(1)
-" 2>/dev/null)"
-    _login="${_login_pass%%	*}"
-    _password="${_login_pass#*	}"
+    _login="$(printf '%s' "$_body" | sed -n 's/.*"login"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+    _password="$(printf '%s' "$_body" | sed -n 's/.*"password"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
     if [ -z "$_login" ] || [ -z "$_password" ]; then
         json_401
         return
     fi
-    _token="$("$AUTH_HELPER" login "$_login" "$_password" 2>/dev/null)"
+    _token=""
+    if auth_verify "$_login" "$_password"; then
+        _token="$(auth_create_session)"
+    fi
     if [ -n "$_token" ]; then
         status_header 200
         printf 'Set-Cookie: session=%s; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400\r\n' "$_token"
@@ -140,7 +197,7 @@ except Exception:
 }
 route_auth_logout() {
     _tok="$(get_session_from_cookie)"
-    [ -n "$_tok" ] && "$AUTH_HELPER" destroy_session "$_tok" 2>/dev/null || true
+    auth_destroy_session "$_tok"
     status_header 200
     printf 'Set-Cookie: session=; Path=/; Max-Age=0\r\n'
     cgi_header
@@ -153,23 +210,15 @@ route_auth_check() {
 }
 route_auth_change_password() {
     _body="$1"
-    _pw_pair="$(printf '%s' "$_body" | "$PYTHON" -c "
-import sys, json
-try:
-    d = json.loads(sys.stdin.read())
-    print(d.get('current_password', '') + '\t' + d.get('new_password', ''))
-except Exception:
-    pass
-" 2>/dev/null)"
-    _current="${_pw_pair%%	*}"
-    _new="${_pw_pair#*	}"
+    _current="$(printf '%s' "$_body" | sed -n 's/.*"current_password"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+    _new="$(printf '%s' "$_body" | sed -n 's/.*"new_password"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
     if [ -z "$_new" ]; then
         status_header 400
         cgi_header
         printf '{"success":false,"error":"Missing current or new password"}\n'
         return
     fi
-    if "$AUTH_HELPER" change_password "$_current" "$_new" 2>/dev/null; then
+    if auth_change_password "$_current" "$_new"; then
         status_header 200
         cgi_header
         printf '{"success":true}\n'
@@ -2260,7 +2309,7 @@ main() {
         :
     else
         session="$(get_session_from_cookie)"
-        if [ -z "$session" ] || ! "$AUTH_HELPER" verify_session "$session" 2>/dev/null; then
+        if [ -z "$session" ] || ! auth_verify_session "$session"; then
             json_401
             return 0
         fi

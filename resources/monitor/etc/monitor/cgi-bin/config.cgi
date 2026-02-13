@@ -8,7 +8,7 @@
 PATH="/opt/bin:/opt/sbin:/usr/bin:/usr/sbin:/bin:/sbin"; export PATH
 ETC_ALLOW="${ETC_ALLOW:-/opt/etc/allow}"
 CONFIG_DIR="${CONFIG_DIR:-/opt/etc/allow/monitor}"
-AUTH_HELPER="${CONFIG_DIR}/auth_helper.py"
+SESSIONS_FILE="${CONFIG_DIR}/sessions"
 # Дебаг sing-box: включить через env DEBUG_SINGBOX_CONFIG=1 или флаг-файл (lighttpd не передаёт env в CGI)
 DEBUG_SINGBOX_ACTIVE=0
 [ "${DEBUG_SINGBOX_CONFIG:-0}" = "1" ] && DEBUG_SINGBOX_ACTIVE=1
@@ -38,7 +38,11 @@ get_session_from_cookie() {
     echo "$_c"
 }
 session="$(get_session_from_cookie)"
-if [ -z "$session" ] || ! "$AUTH_HELPER" verify_session "$session" 2>/dev/null; then
+auth_ok=0
+if [ -n "$session" ] && [ -f "$SESSIONS_FILE" ]; then
+    grep -q -F "$session" "$SESSIONS_FILE" 2>/dev/null && auth_ok=1
+fi
+if [ "$auth_ok" -eq 0 ]; then
     printf 'Status: 401\r\n'
     printf 'Content-Type: application/json; charset=utf-8\r\n\r\n'
     printf '{"error":"Unauthorized"}\n'
