@@ -184,10 +184,14 @@ batch_add_ips_to_ipset() {
     local batch=""
     while read -r ip; do
         [ -z "$ip" ] && continue
+        case "$ip" in
+            */*) entry="$ip" ;;
+            *)   entry="${ip}/32" ;;
+        esac
         if [ $count -eq 0 ]; then
-            batch="${ip}/32"
+            batch="$entry"
         else
-            batch="$batch\n${ip}/32"
+            batch="$batch\n$entry"
         fi
         count=$((count + 1))
         
