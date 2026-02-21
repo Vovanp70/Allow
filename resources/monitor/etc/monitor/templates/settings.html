@@ -96,6 +96,32 @@
                     <h2 class="settings-section-title">Sing-box: прокси (outbound'ы)</h2>
                 </div>
                 <div class="singbox-body">
+                    <div id="singbox-settings-proxy-selector" class="singbox-settings-proxy-selector" style="display: none; margin-bottom: 14px;">
+                        <div class="info-item" style="margin-bottom: 6px;">
+                            <span class="label">Текущий прокси:</span>
+                        </div>
+                        <div id="singbox-settings-proxy-selector-list" class="singbox-proxy-options" style="display: flex; flex-wrap: wrap; gap: 8px;"></div>
+                        <div id="singbox-settings-proxy-selector-error" class="singbox-proxy-error" style="display: none; color: #c00; font-size: 13px; margin-top: 6px;"></div>
+                        <div style="margin-top: 8px;">
+                            <button type="button" class="btn btn-secondary" id="singbox-settings-proxy-delay-btn" style="padding: 4px 10px; font-size: 12px;">Проверить задержку</button>
+                            <span id="singbox-settings-proxy-delay-result" class="form-hint" style="margin-left: 8px;"></span>
+                        </div>
+                    </div>
+                    <div id="singbox-urltest-options" class="singbox-urltest-options" style="display: none; margin-bottom: 14px; padding: 10px; background: #f5f5f7; border-radius: 8px;">
+                        <h3 class="settings-subsection-title" style="margin: 0 0 10px 0; font-size: 14px;">Параметры URLTest</h3>
+                        <div class="form-group" style="margin-bottom: 8px;">
+                            <label for="singbox-urltest-url" class="form-label">Тестовый URL</label>
+                            <input type="text" id="singbox-urltest-url" class="form-input" placeholder="https://www.gstatic.com/generate_204" style="width: 100%; max-width: 400px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 8px;">
+                            <label for="singbox-urltest-interval" class="form-label">Интервал проверки</label>
+                            <input type="text" id="singbox-urltest-interval" class="form-input" placeholder="3m" style="width: 120px;">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="singbox-urltest-tolerance" class="form-label">Допуск, мс</label>
+                            <input type="number" id="singbox-urltest-tolerance" class="form-input" min="0" placeholder="50" style="width: 100px;">
+                        </div>
+                    </div>
                     <div class="singbox-proxy-list-wrapper">
                         <div id="singbox-proxy-list" class="singbox-proxy-list"></div>
                         <p id="singbox-proxy-list-hint" class="form-hint singbox-proxy-hint"></p>

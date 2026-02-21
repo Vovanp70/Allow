@@ -109,6 +109,36 @@ function ensureClashApi(config) {
     }
 }
 
+/** Читает параметры URLTest из полей формы или возвращает значения по умолчанию. */
+function getUrltestOptionsFromDom() {
+    var urlEl = document.getElementById('singbox-urltest-url');
+    var intervalEl = document.getElementById('singbox-urltest-interval');
+    var toleranceEl = document.getElementById('singbox-urltest-tolerance');
+    var url = (urlEl && urlEl.value && urlEl.value.trim()) ? urlEl.value.trim() : URLTEST_URL;
+    var interval = (intervalEl && intervalEl.value && intervalEl.value.trim()) ? intervalEl.value.trim() : URLTEST_INTERVAL;
+    var t = (toleranceEl && toleranceEl.value !== '' && toleranceEl.value !== undefined) ? parseInt(toleranceEl.value, 10) : NaN;
+    var tolerance = (!isNaN(t) && t >= 0) ? t : URLTEST_TOLERANCE;
+    return { url: url, interval: interval, tolerance: tolerance };
+}
+
+/** Показать/заполнить блок «Параметры URLTest» при 2+ прокси. */
+function renderUrltestOptions() {
+    var block = document.getElementById('singbox-urltest-options');
+    if (!block) return;
+    if (!singboxCurrentConfig || !singboxCurrentConfig.proxyOutbounds || singboxCurrentConfig.proxyOutbounds.length < 2) {
+        block.style.display = 'none';
+        return;
+    }
+    block.style.display = 'block';
+    var opts = singboxCurrentConfig.urltestOptions || { url: URLTEST_URL, interval: URLTEST_INTERVAL, tolerance: URLTEST_TOLERANCE };
+    var urlEl = document.getElementById('singbox-urltest-url');
+    var intervalEl = document.getElementById('singbox-urltest-interval');
+    var toleranceEl = document.getElementById('singbox-urltest-tolerance');
+    if (urlEl) urlEl.value = opts.url || URLTEST_URL;
+    if (intervalEl) intervalEl.value = opts.interval || URLTEST_INTERVAL;
+    if (toleranceEl) toleranceEl.value = String(opts.tolerance !== undefined && opts.tolerance !== null ? opts.tolerance : URLTEST_TOLERANCE);
+}
+
 /** Собирает массив outbounds: при 1 прокси — [proxy, ...directBlock]; при 2+ — directBlock, прокси, urltest, selector. */
 function buildOutboundsArray(proxyOutbounds, directBlock) {
     var list = [];
@@ -123,13 +153,14 @@ function buildOutboundsArray(proxyOutbounds, directBlock) {
     var proxyTags = proxyOutbounds.map(function (o) { return o.tag; });
     var directPart = (directBlock || []).map(stripControlChars);
     var proxyPart = proxyOutbounds.map(function (o) { return stripControlChars(o); });
+    var opts = getUrltestOptionsFromDom();
     var urltestPart = {
         type: 'urltest',
         tag: URLTEST_TAG,
         outbounds: proxyTags,
-        url: URLTEST_URL,
-        interval: URLTEST_INTERVAL,
-        tolerance: URLTEST_TOLERANCE
+        url: opts.url,
+        interval: opts.interval,
+        tolerance: opts.tolerance
     };
     var selectorPart = {
         type: 'selector',
@@ -254,6 +285,7 @@ function deleteSingboxProxy(index) {
     singboxProxyLinks = links;
     singboxDirty = true;
     renderSingboxProxyList();
+    renderUrltestOptions();
     if (typeof window.settingsUpdateSaveButton === 'function') window.settingsUpdateSaveButton();
 }
 
@@ -293,16 +325,76 @@ async function loadSingboxProxyList() {
             const link = outboundToLink(o);
             links.push(link || '(не удалось преобразовать в ссылку)');
         });
-        singboxCurrentConfig = { config: config, proxyOutbounds: proxyOutbounds, directBlock: directBlock };
+        var urltestOb = config.outbounds.find(function (o) { return o.type === 'urltest' && o.tag === URLTEST_TAG; });
+        var urltestOptions = { url: URLTEST_URL, interval: URLTEST_INTERVAL, tolerance: URLTEST_TOLERANCE };
+        if (urltestOb) {
+            if (urltestOb.url) urltestOptions.url = urltestOb.url;
+            if (urltestOb.interval) urltestOptions.interval = urltestOb.interval;
+            if (urltestOb.tolerance !== undefined && urltestOb.tolerance !== null) urltestOptions.tolerance = Number(urltestOb.tolerance);
+        }
+        singboxCurrentConfig = { config: config, proxyOutbounds: proxyOutbounds, directBlock: directBlock, urltestOptions: urltestOptions };
         singboxProxyLinks = links;
         singboxDirty = false;
         renderSingboxProxyList();
+        renderUrltestOptions();
+        loadSettingsProxySelector().catch(function () {});
     } catch (err) {
         listEl.innerHTML = '<p style="color: #c00;">Ошибка загрузки: ' + (err.message || 'сеть') + '</p>';
         singboxCurrentConfig = null;
         singboxProxyLinks = [];
     } finally {
         if (typeof hideProgress === 'function') hideProgress();
+    }
+}
+
+async function loadSettingsProxySelector() {
+    var container = document.getElementById('singbox-settings-proxy-selector');
+    var listEl = document.getElementById('singbox-settings-proxy-selector-list');
+    var errEl = document.getElementById('singbox-settings-proxy-selector-error');
+    if (!container || !listEl) return;
+    if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+    listEl.innerHTML = '';
+    container.style.display = 'none';
+    try {
+        var data = await apiRequest('/singbox/proxies');
+        if (data && data.error) {
+            if (errEl) { errEl.textContent = data.message || data.error; errEl.style.display = 'block'; }
+            container.style.display = 'block';
+            return;
+        }
+        var proxies = data && data.proxies ? data.proxies : {};
+        var group = proxies[SELECTOR_TAG];
+        if (!group || !Array.isArray(group.all) || group.all.length === 0) return;
+        container.style.display = 'block';
+        var now = group.now || '';
+        group.all.forEach(function (tag) {
+            var label = (tag === URLTEST_TAG) ? 'Авто' : (proxies[tag] && proxies[tag].name ? proxies[tag].name : tag);
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'btn btn-secondary singbox-proxy-option' + (tag === now ? ' singbox-proxy-option--active' : '');
+            btn.textContent = label;
+            btn.dataset.tag = tag;
+            btn.style.cssText = 'padding: 4px 10px; font-size: 12px;';
+            btn.addEventListener('click', function () {
+                var t = btn.dataset.tag;
+                if (!t || t === now) return;
+                btn.disabled = true;
+                apiRequest('/singbox/proxies', 'PUT', { group: SELECTOR_TAG, name: t })
+                    .then(function () {
+                        if (typeof showToast === 'function') showToast('Прокси изменён');
+                        loadSettingsProxySelector().catch(function () {});
+                    })
+                    .catch(function (e) {
+                        if (typeof showToast === 'function') showToast('Ошибка: ' + (e.message || 'сеть'), 3000);
+                        loadSettingsProxySelector().catch(function () {});
+                    })
+                    .finally(function () { btn.disabled = false; });
+            });
+            listEl.appendChild(btn);
+        });
+    } catch (e) {
+        if (errEl) { errEl.textContent = e.message || 'Не удалось загрузить список прокси'; errEl.style.display = 'block'; }
+        container.style.display = 'block';
     }
 }
 
@@ -374,7 +466,14 @@ async function singboxSettingsAddFromLinks() {
                     const link = outboundToLink(o);
                     links.push(link || '(не удалось преобразовать в ссылку)');
                 });
-                singboxCurrentConfig = { config: config, proxyOutbounds: proxyOutbounds, directBlock: directBlock };
+                var urltestOb = config.outbounds.find(function (o) { return o.type === 'urltest' && o.tag === URLTEST_TAG; });
+                var urltestOptions = { url: URLTEST_URL, interval: URLTEST_INTERVAL, tolerance: URLTEST_TOLERANCE };
+                if (urltestOb) {
+                    if (urltestOb.url) urltestOptions.url = urltestOb.url;
+                    if (urltestOb.interval) urltestOptions.interval = urltestOb.interval;
+                    if (urltestOb.tolerance !== undefined && urltestOb.tolerance !== null) urltestOptions.tolerance = Number(urltestOb.tolerance);
+                }
+                singboxCurrentConfig = { config: config, proxyOutbounds: proxyOutbounds, directBlock: directBlock, urltestOptions: urltestOptions };
                 singboxProxyLinks = links;
             }
         }
@@ -397,6 +496,7 @@ async function singboxSettingsAddFromLinks() {
         if (msgEl) msgEl.textContent = 'Добавлено: ' + newOutbounds.length + '. Нажмите «Сохранить» для применения.';
         if (inputEl) inputEl.value = '';
         renderSingboxProxyList();
+        renderUrltestOptions();
         if (typeof window.settingsUpdateSaveButton === 'function') window.settingsUpdateSaveButton();
     } catch (err) {
         if (msgEl) msgEl.textContent = 'Ошибка: ' + err.message;
@@ -433,8 +533,48 @@ async function saveSingboxDraft() {
     }
 }
 
+function bindUrltestOptionsInputs() {
+    ['singbox-urltest-url', 'singbox-urltest-interval', 'singbox-urltest-tolerance'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('change', function () { singboxDirty = true; if (typeof window.settingsUpdateSaveButton === 'function') window.settingsUpdateSaveButton(); });
+    });
+}
+
+async function runSettingsProxyDelayTest() {
+    var btn = document.getElementById('singbox-settings-proxy-delay-btn');
+    var resultEl = document.getElementById('singbox-settings-proxy-delay-result');
+    if (!btn || !resultEl) return;
+    btn.disabled = true;
+    resultEl.textContent = 'Проверка…';
+    try {
+        var data = await apiRequest('/singbox/proxies/delay?group=allow-proxy&timeout=5000');
+        if (data && data.error) {
+            resultEl.textContent = data.error || 'Ошибка';
+            return;
+        }
+        var parts = [];
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
+            Object.keys(data).forEach(function (tag) {
+                var v = data[tag];
+                var label = (tag === URLTEST_TAG) ? 'Авто' : tag;
+                if (typeof v === 'number') parts.push(label + ': ' + v + ' ms');
+                else if (v && v.message) parts.push(label + ': ' + v.message);
+                else parts.push(label + ': —');
+            });
+        }
+        resultEl.textContent = parts.length ? parts.join(', ') : 'Нет данных';
+    } catch (e) {
+        resultEl.textContent = e.message || 'Ошибка';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function () {
     loadSingboxProxyList();
+    bindUrltestOptionsInputs();
+    var delayBtn = document.getElementById('singbox-settings-proxy-delay-btn');
+    if (delayBtn) delayBtn.addEventListener('click', runSettingsProxyDelayTest);
 });
 
 window.isSingboxDirty = isSingboxDirty;

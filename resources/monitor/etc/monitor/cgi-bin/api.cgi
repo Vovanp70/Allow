@@ -1683,6 +1683,38 @@ route_singbox_proxies_put() {
     cgi_header
     printf '{"success":false,"error":"Clash API returned %s","body":%s}\n' "$_code" "$(printf '%s' "$_body_resp" | jq -Rs . 2>/dev/null || echo '""')"
 }
+route_singbox_proxies_delay() {
+    _group="allow-proxy"
+    _timeout="5000"
+    _test_url="https://www.gstatic.com/generate_204"
+    _qs="${QUERY_STRING:-}"
+    for _p in $(echo "$_qs" | tr '&' '\n'); do
+        case "$_p" in
+            group=*) _group="${_p#group=}"; _group="${_group%%&*}"; _group="$(printf '%s' "$_group" | sed 's/%2F/\//g; s/%3A/:/g')" ;;
+            timeout=*) _timeout="${_p#timeout=}"; _timeout="${_timeout%%&*}" ;;
+        esac
+    done
+    [ -z "$_group" ] && _group="allow-proxy"
+    _ctrl="$(get_clash_api_controller | head -n 1)"
+    _secret_line="$(get_clash_api_controller | grep '^secret:' | head -n 1)"
+    _secret="${_secret_line#secret:}"
+    if [ -z "$_ctrl" ]; then
+        status_header 503
+        cgi_header
+        printf '{"error":"Clash API not configured"}\n'
+        return 0
+    fi
+    _base="http://${_ctrl}/group/${_group}/delay"
+    _resp="$(curl -s -G --connect-timeout 5 --max-time 15 --data-urlencode "url=$_test_url" --data-urlencode "timeout=$_timeout" ${_secret:+-H "Authorization: Bearer $_secret"} "$_base" 2>/dev/null)" || _resp=""
+    if [ -z "$_resp" ]; then
+        status_header 503
+        cgi_header
+        printf '{"error":"Clash API unreachable"}\n'
+        return 0
+    fi
+    cgi_header
+    printf '%s\n' "$_resp"
+}
 
 # --- /dnsmasq-family/status GET ---
 route_dnsmasq_family_status() {
@@ -2377,6 +2409,7 @@ main() {
         singbox/route-by-mark/iptables-rules) path="/singbox/route-by-mark/iptables-rules" ;;
         singbox/route-by-mark)              path="/singbox/route-by-mark" ;;
         singbox/proxies)                    path="/singbox/proxies" ;;
+        singbox/proxies/delay)              path="/singbox/proxies/delay" ;;
         routing/blocks/*/items) path="/routing/block-items" ;;
         routing/blocks/*)        path="/routing/blocks" ;;
         routing/apply)           path="/routing/apply" ;;
@@ -2621,6 +2654,9 @@ main() {
             else
                 json_404
             fi
+            ;;
+        /singbox/proxies/delay)
+            [ "$REQUEST_METHOD" = "GET" ] && route_singbox_proxies_delay || json_404
             ;;
         /routing/block-items)
             [ "$REQUEST_METHOD" = "POST" ] && route_routing_block_items_post || json_404

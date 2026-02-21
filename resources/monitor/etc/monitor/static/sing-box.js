@@ -1,7 +1,4 @@
 // ========== SING-BOX ==========
-// Теги selector/urltest для переключения прокси на дашборде (совпадают с singbox-proxies.js)
-const SINGBOX_SELECTOR_TAG = 'allow-proxy';
-const SINGBOX_URLTEST_TAG = 'allow-urltest';
 
 function _setSingboxTextAndClass(el, text, className) {
     if (!el) return;
@@ -62,7 +59,6 @@ async function loadSingboxStatus() {
         } catch (e) {
             console.warn('Не удалось загрузить состояние логирования Sing-box:', e);
         }
-        loadSingboxProxySelector().catch(function () {});
     } catch (error) {
         console.error('Ошибка загрузки статуса Sing-box:', error);
         if (statusEl) _setSingboxTextAndClass(statusEl, 'Ошибка', 'value status-stopped');
@@ -70,62 +66,6 @@ async function loadSingboxStatus() {
         _toggleSingboxDisplay(startBtn, true);
         _toggleSingboxDisplay(stopBtn, false);
         _toggleSingboxDisplay(restartBtn, true);
-    }
-}
-
-async function loadSingboxProxySelector() {
-    const container = document.getElementById('singbox-proxy-selector');
-    const listEl = document.getElementById('singbox-proxy-selector-list');
-    const errEl = document.getElementById('singbox-proxy-selector-error');
-    if (!container || !listEl) return;
-    errEl.style.display = 'none';
-    errEl.textContent = '';
-    listEl.innerHTML = '';
-    container.style.display = 'none';
-    try {
-        const data = await apiRequest('/singbox/proxies');
-        if (data && data.error) {
-            errEl.textContent = data.message || data.error;
-            errEl.style.display = 'block';
-            container.style.display = 'block';
-            return;
-        }
-        const proxies = data && data.proxies ? data.proxies : {};
-        const group = proxies[SINGBOX_SELECTOR_TAG];
-        if (!group || !Array.isArray(group.all) || group.all.length === 0) {
-            return;
-        }
-        container.style.display = 'block';
-        const now = group.now || '';
-        group.all.forEach(function (tag) {
-            const label = (tag === SINGBOX_URLTEST_TAG) ? 'Авто' : (proxies[tag] && proxies[tag].name ? proxies[tag].name : tag);
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'btn btn-secondary singbox-proxy-option' + (tag === now ? ' singbox-proxy-option--active' : '');
-            btn.textContent = label;
-            btn.dataset.tag = tag;
-            btn.style.cssText = 'padding: 4px 10px; font-size: 12px;';
-            btn.addEventListener('click', function () {
-                const t = btn.dataset.tag;
-                if (!t || t === now) return;
-                btn.disabled = true;
-                apiRequest('/singbox/proxies', 'PUT', { group: SINGBOX_SELECTOR_TAG, name: t })
-                    .then(function () {
-                        if (typeof showToast === 'function') showToast('Прокси изменён');
-                        loadSingboxProxySelector().catch(function () {});
-                    })
-                    .catch(function (e) {
-                        if (typeof showToast === 'function') showToast('Ошибка: ' + (e.message || 'сеть'), 3000);
-                        loadSingboxProxySelector().catch(function () {});
-                    })
-                    .finally(function () { btn.disabled = false; });
-            });
-            listEl.appendChild(btn);
-        });
-    } catch (e) {
-        errEl.textContent = e.message || 'Не удалось загрузить список прокси';
-        errEl.style.display = 'block';
-        container.style.display = 'block';
     }
 }
 
