@@ -3,6 +3,12 @@
 const SINGBOX_CONFIG_GET  = '/cgi-bin/config.cgi/sing-box/config/full';
 const SINGBOX_CONFIG_POST = '/cgi-bin/config.cgi/sing-box/config/full';
 const SINGBOX_PROXY_MAX   = 10;
+const SELECTOR_TAG        = 'allow-proxy';
+const URLTEST_TAG         = 'allow-urltest';
+const URLTEST_URL         = 'https://www.gstatic.com/generate_204';
+const URLTEST_INTERVAL    = '3m';
+const URLTEST_TOLERANCE   = 50;
+const CLASH_API_DEFAULT   = '127.0.0.1:9090';
 
 let singboxCurrentConfig = null;  // { config, proxyOutbounds, directBlock }
 let singboxProxyLinks    = [];    // ссылки для отображения (индексы совпадают с proxyOutbounds)
@@ -71,11 +77,68 @@ function stripUnsupportedSingboxOutboundFields(config) {
     });
 }
 
-/** Устанавливает config.route.final: при отсутствии прокси — "direct", иначе — тег первого прокси. */
+/** Устанавливает config.route.final: при 2+ прокси — selector (allow-proxy), иначе первый прокси или direct. */
 function applySingboxRouteFinal(config, proxyOutbounds) {
     if (!config) return;
     if (!config.route || typeof config.route !== 'object') config.route = {};
-    config.route.final = proxyOutbounds.length > 0 ? proxyOutbounds[0].tag : 'direct';
+    if (proxyOutbounds.length >= 2) {
+        config.route.final = SELECTOR_TAG;
+    } else {
+        config.route.final = proxyOutbounds.length > 0 ? proxyOutbounds[0].tag : 'direct';
+    }
+}
+
+/** Присваивает стабильные теги proxy-1, proxy-2, ... при 2+ прокси. */
+function ensureProxyTags(proxyOutbounds) {
+    if (!proxyOutbounds || proxyOutbounds.length < 2) return;
+    proxyOutbounds.forEach(function (o, i) {
+        if (o && (o.type === 'vless' || o.type === 'trojan' || o.type === 'vmess' || o.type === 'shadowsocks' || o.type === 'hysteria2')) {
+            o.tag = 'proxy-' + (i + 1);
+        }
+    });
+}
+
+/** Добавляет experimental.clash_api в config, если его ещё нет (нужно для переключения в UI). */
+function ensureClashApi(config) {
+    if (!config) return;
+    if (!config.experimental || typeof config.experimental !== 'object') config.experimental = {};
+    if (!config.experimental.clash_api || !config.experimental.clash_api.external_controller) {
+        config.experimental.clash_api = {
+            external_controller: CLASH_API_DEFAULT
+        };
+    }
+}
+
+/** Собирает массив outbounds: при 1 прокси — [proxy, ...directBlock]; при 2+ — directBlock, прокси, urltest, selector. */
+function buildOutboundsArray(proxyOutbounds, directBlock) {
+    var list = [];
+    if (!proxyOutbounds || proxyOutbounds.length === 0) {
+        return (directBlock || []).map(stripControlChars);
+    }
+    if (proxyOutbounds.length === 1) {
+        list = [stripControlChars(proxyOutbounds[0])].concat((directBlock || []).map(stripControlChars));
+        return list;
+    }
+    ensureProxyTags(proxyOutbounds);
+    var proxyTags = proxyOutbounds.map(function (o) { return o.tag; });
+    var directPart = (directBlock || []).map(stripControlChars);
+    var proxyPart = proxyOutbounds.map(function (o) { return stripControlChars(o); });
+    var urltestPart = {
+        type: 'urltest',
+        tag: URLTEST_TAG,
+        outbounds: proxyTags,
+        url: URLTEST_URL,
+        interval: URLTEST_INTERVAL,
+        tolerance: URLTEST_TOLERANCE
+    };
+    var selectorPart = {
+        type: 'selector',
+        tag: SELECTOR_TAG,
+        outbounds: [URLTEST_TAG].concat(proxyTags),
+        default: URLTEST_TAG
+    };
+    list = directPart.concat(proxyPart, [urltestPart], [selectorPart]);
+    return list;
 }
 
 function parseConfigFromResponse(data) {
@@ -185,7 +248,8 @@ function deleteSingboxProxy(index) {
     });
     applySingboxRouteFinal(singboxCurrentConfig.config, proxyOutbounds);
     singboxCurrentConfig.proxyOutbounds = proxyOutbounds;
-    singboxCurrentConfig.config.outbounds = proxyOutbounds.concat(singboxCurrentConfig.directBlock);
+    singboxCurrentConfig.config.outbounds = buildOutboundsArray(proxyOutbounds, singboxCurrentConfig.directBlock);
+    if (proxyOutbounds.length >= 2) ensureClashApi(singboxCurrentConfig.config);
     stripUnsupportedSingboxOutboundFields(singboxCurrentConfig.config);
     singboxProxyLinks = links;
     singboxDirty = true;
@@ -210,9 +274,20 @@ async function loadSingboxProxyList() {
         const directBlock = config.outbounds.filter(function (o) {
             return o.type === 'direct' || o.type === 'block';
         });
-        const proxyOutbounds = config.outbounds.filter(function (o) {
-            return o.type !== 'direct' && o.type !== 'block';
-        }).slice(0, SINGBOX_PROXY_MAX);
+        var proxyOutbounds;
+        var selectorOb = config.outbounds.find(function (o) { return o.type === 'selector' && o.tag === SELECTOR_TAG; });
+        if (selectorOb && Array.isArray(selectorOb.outbounds)) {
+            var tagOrder = selectorOb.outbounds.filter(function (tag) { return tag !== URLTEST_TAG; });
+            var byTag = {};
+            config.outbounds.forEach(function (o) {
+                if (o && o.tag) byTag[o.tag] = o;
+            });
+            proxyOutbounds = tagOrder.map(function (tag) { return byTag[tag]; }).filter(Boolean).slice(0, SINGBOX_PROXY_MAX);
+        } else {
+            proxyOutbounds = config.outbounds.filter(function (o) {
+                return o.type !== 'direct' && o.type !== 'block' && o.type !== 'selector' && o.type !== 'urltest';
+            }).slice(0, SINGBOX_PROXY_MAX);
+        }
         const links = [];
         proxyOutbounds.forEach(function (o) {
             const link = outboundToLink(o);
@@ -282,7 +357,18 @@ async function singboxSettingsAddFromLinks() {
                 if (!config) singboxCurrentConfig.config.outbounds = [];
             } else {
                 const directBlock = config.outbounds.filter(function (o) { return o.type === 'direct' || o.type === 'block'; });
-                const proxyOutbounds = config.outbounds.filter(function (o) { return o.type !== 'direct' && o.type !== 'block'; }).slice(0, SINGBOX_PROXY_MAX);
+                var sel = config.outbounds.find(function (o) { return o.type === 'selector' && o.tag === SELECTOR_TAG; });
+                var proxyOutbounds;
+                if (sel && Array.isArray(sel.outbounds)) {
+                    var tagOrder = sel.outbounds.filter(function (tag) { return tag !== URLTEST_TAG; });
+                    var byTag = {};
+                    config.outbounds.forEach(function (o) { if (o && o.tag) byTag[o.tag] = o; });
+                    proxyOutbounds = tagOrder.map(function (tag) { return byTag[tag]; }).filter(Boolean).slice(0, SINGBOX_PROXY_MAX);
+                } else {
+                    proxyOutbounds = config.outbounds.filter(function (o) {
+                        return o.type !== 'direct' && o.type !== 'block' && o.type !== 'selector' && o.type !== 'urltest';
+                    }).slice(0, SINGBOX_PROXY_MAX);
+                }
                 const links = [];
                 proxyOutbounds.forEach(function (o) {
                     const link = outboundToLink(o);
@@ -299,7 +385,8 @@ async function singboxSettingsAddFromLinks() {
         }
         applySingboxRouteFinal(singboxCurrentConfig.config, combined);
         singboxCurrentConfig.proxyOutbounds = combined;
-        singboxCurrentConfig.config.outbounds = combined.concat(singboxCurrentConfig.directBlock.map(stripControlChars));
+        singboxCurrentConfig.config.outbounds = buildOutboundsArray(combined, singboxCurrentConfig.directBlock);
+        if (combined.length >= 2) ensureClashApi(singboxCurrentConfig.config);
         stripUnsupportedSingboxOutboundFields(singboxCurrentConfig.config);
         singboxProxyLinks = [];
         combined.forEach(function (o) {
@@ -353,3 +440,5 @@ document.addEventListener('DOMContentLoaded', function () {
 window.isSingboxDirty = isSingboxDirty;
 window.setSingboxDirty = setSingboxDirty;
 window.saveSingboxDraft = saveSingboxDraft;
+window.SELECTOR_TAG = SELECTOR_TAG;
+window.URLTEST_TAG = URLTEST_TAG;

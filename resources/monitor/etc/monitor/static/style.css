@@ -1746,6 +1746,12 @@ a.menu-item {
     margin-top: 8px;
 }
 
+.singbox-proxy-option--active {
+    background: #007aff;
+    color: #fff;
+    border-color: #007aff;
+}
+
 /* Login page (standalone, no sidebar) */
 .login-page {
     min-height: 100vh;

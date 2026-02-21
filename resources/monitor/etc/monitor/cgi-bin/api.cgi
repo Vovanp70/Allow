@@ -1604,6 +1604,86 @@ route_singbox_route_by_mark_post() {
     fi
 }
 
+# --- /singbox/proxies GET and PUT (proxy to sing-box Clash API for selector switching) ---
+SINGBOX_CONFIG="${ETC_ALLOW}/sing-box/config.json"
+get_clash_api_controller() {
+    _ctrl=""
+    _secret=""
+    [ ! -f "$SINGBOX_CONFIG" ] && return 1
+    command -v jq >/dev/null 2>&1 || return 1
+    _ctrl="$(jq -r '.experimental.clash_api.external_controller // empty' "$SINGBOX_CONFIG" 2>/dev/null)"
+    _secret="$(jq -r '.experimental.clash_api.secret // empty' "$SINGBOX_CONFIG" 2>/dev/null)"
+    [ -z "$_ctrl" ] && return 1
+    echo "$_ctrl"
+    [ -n "$_secret" ] && echo "secret:$_secret"
+}
+route_singbox_proxies_get() {
+    _ctrl=""
+    _secret=""
+    _line="$(get_clash_api_controller | head -n 1)"
+    [ -z "$_line" ] && _line=""
+    _ctrl="$_line"
+    _secret_line="$(get_clash_api_controller | grep '^secret:' | head -n 1)"
+    _secret="${_secret_line#secret:}"
+    if [ -z "$_ctrl" ]; then
+        status_header 503
+        cgi_header
+        printf '{"error":"Clash API not configured","message":"Add experimental.clash_api.external_controller to sing-box config"}\n'
+        return 0
+    fi
+    _url="http://${_ctrl}/proxies"
+    _resp="$(curl -s --connect-timeout 3 --max-time 10 ${_secret:+-H "Authorization: Bearer $_secret"} "$_url" 2>/dev/null)" || _resp=""
+    if [ -z "$_resp" ]; then
+        status_header 503
+        cgi_header
+        printf '{"error":"Clash API unreachable","message":"sing-box may be stopped or clash_api not available"}\n'
+        return 0
+    fi
+    cgi_header
+    printf '%s\n' "$_resp"
+}
+route_singbox_proxies_put() {
+    _body="$1"
+    _group=""
+    _name=""
+    command -v jq >/dev/null 2>&1 || {
+        status_header 503
+        cgi_header
+        printf '{"error":"jq required"}\n'
+        return 0
+    }
+    _group="$(printf '%s' "$_body" | jq -r '.group // empty' 2>/dev/null)"
+    _name="$(printf '%s' "$_body" | jq -r '.name // empty' 2>/dev/null)"
+    if [ -z "$_group" ] || [ -z "$_name" ]; then
+        status_header 400
+        cgi_header
+        printf '{"error":"body must contain group and name"}\n'
+        return 0
+    fi
+    _ctrl="$(get_clash_api_controller | head -n 1)"
+    _secret_line="$(get_clash_api_controller | grep '^secret:' | head -n 1)"
+    _secret="${_secret_line#secret:}"
+    if [ -z "$_ctrl" ]; then
+        status_header 503
+        cgi_header
+        printf '{"error":"Clash API not configured"}\n'
+        return 0
+    fi
+    _url="http://${_ctrl}/proxies/${_group}"
+    _json_name="$(printf '%s' "$_name" | jq -R -c '{name: .}' 2>/dev/null)" || _json_name="$(printf '{"name":"%s"}' "$(printf '%s' "$_name" | sed 's/\\/\\\\/g;s/"/\\"/g')")"
+    _resp="$(curl -s -w '\n%{http_code}' -X PUT -H 'Content-Type: application/json' --data-raw "$_json_name" --connect-timeout 3 --max-time 10 ${_secret:+-H "Authorization: Bearer $_secret"} "$_url" 2>/dev/null)" || _resp=""
+    _code="$(echo "$_resp" | tail -n 1)"
+    _body_resp="$(echo "$_resp" | sed '$d')"
+    if [ "$_code" = "204" ] || [ "$_code" = "200" ]; then
+        cgi_header
+        printf '{"success":true,"group":"%s","name":"%s"}\n' "$(json_esc "$_group")" "$(json_esc "$_name")"
+        return 0
+    fi
+    status_header 500
+    cgi_header
+    printf '{"success":false,"error":"Clash API returned %s","body":%s}\n' "$_code" "$(printf '%s' "$_body_resp" | jq -Rs . 2>/dev/null || echo '""')"
+}
+
 # --- /dnsmasq-family/status GET ---
 route_dnsmasq_family_status() {
     script="${MANAGED_DIR}/dnsmasq-family.sh"
@@ -2296,6 +2376,7 @@ main() {
         singbox/route-by-mark/status)        path="/singbox/route-by-mark/status" ;;
         singbox/route-by-mark/iptables-rules) path="/singbox/route-by-mark/iptables-rules" ;;
         singbox/route-by-mark)              path="/singbox/route-by-mark" ;;
+        singbox/proxies)                    path="/singbox/proxies" ;;
         routing/blocks/*/items) path="/routing/block-items" ;;
         routing/blocks/*)        path="/routing/blocks" ;;
         routing/apply)           path="/routing/apply" ;;
@@ -2317,7 +2398,7 @@ main() {
     fi
 
     body=""
-    if [ "$REQUEST_METHOD" = "POST" ]; then
+    if [ "$REQUEST_METHOD" = "POST" ] || [ "$REQUEST_METHOD" = "PUT" ]; then
         body="$(read_body)"
     fi
 
@@ -2531,6 +2612,15 @@ main() {
             ;;
         /singbox/route-by-mark)
             [ "$REQUEST_METHOD" = "POST" ] && route_singbox_route_by_mark_post "$body" || json_404
+            ;;
+        /singbox/proxies)
+            if [ "$REQUEST_METHOD" = "GET" ]; then
+                route_singbox_proxies_get
+            elif [ "$REQUEST_METHOD" = "PUT" ]; then
+                route_singbox_proxies_put "$body"
+            else
+                json_404
+            fi
             ;;
         /routing/block-items)
             [ "$REQUEST_METHOD" = "POST" ] && route_routing_block_items_post || json_404
