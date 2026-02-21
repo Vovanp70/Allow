@@ -84,8 +84,8 @@ install_dependencies() {
     fi
 
     # Обязательные зависимости: tcpdump, bind-dig (dig), ipset, iptables, mc, coreutils-sort, grep, gzip, kmod_ndms, xtables-addons_legacy
-    # CA для TLS (curl/wget/https): ca-bundle + ca-certificates
-    DEPENDENCIES="tcpdump bind-dig ipset iptables mc coreutils-sort grep gzip kmod_ndms xtables-addons_legacy ca-certificates ca-bundle"
+    # Временно отключены: ca-certificates ca-bundle (CA для TLS)
+    DEPENDENCIES="tcpdump bind-dig ipset iptables mc coreutils-sort grep gzip kmod_ndms xtables-addons_legacy"
 
     # Список пакетов, которые поставили мы (для корректного uninstall)
     MANAGED_PKGS=""

@@ -117,6 +117,7 @@ usage() {
   stubby                     Управление компонентом stubby (DoT)
   dnsmasq-full               Управление компонентом dnsmasq-full
   sing-box                   Управление компонентом sing-box (proxy через TUN)
+  markalltovpn               Маршрутизация по марке (route-by-mark, NDM netfilter)
   monitor                    Веб-интерфейс мониторинга компонентов
   allow                      Единый скрипт автозапуска всех компонентов (S01allow)
   logrotate                  Ротация логов компонентов ALLOW (cron + лимит по размеру)
@@ -272,7 +273,8 @@ run_all_default_install() {
     fi
 
     # Список компонентов для установки в порядке установки
-    COMPONENTS="dependencies curl-http3 stubby dnsmasq-full sing-box markalltovpn monitor allow logrotate"
+    # Временно отключены: curl-http3
+    COMPONENTS="dependencies stubby dnsmasq-full sing-box markalltovpn monitor allow logrotate"
     INSTALLED_COMPONENTS=""
     HAS_FAMILY_STUBBY=0
     HAS_FAMILY_DNSMASQ=0
