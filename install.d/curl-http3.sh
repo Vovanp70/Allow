@@ -521,7 +521,8 @@ install_component() {
     install_curl || return 1
     setup_certificates
     setup_cert_env
-    remove_system_curl
+    # Не удаляем пакетный curl, чтобы после деинсталляции восстановился рабочий системный curl
+    # remove_system_curl
     verify_installation || return 1
     cleanup
     
